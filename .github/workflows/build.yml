@@ -198,12 +198,6 @@ jobs:
           name: sonarqube-report
           path: sonar-report.html
 
-      - name: Upload HTML Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: sonarqube-report
-          path: sonar-report.html
-
       - name: Send Email with SonarQube Report via Outlook
         if: always()
         uses: dawidd6/action-send-mail@v3
