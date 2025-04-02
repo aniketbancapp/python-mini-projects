@@ -198,24 +198,6 @@ jobs:
           name: sonarqube-report
           path: sonar-report.html
 
-      - name: Send Email with SonarQube Report via Outlook
-        if: always()
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.office365.com  # Outlook SMTP server
-          server_port: 587  # Port for STARTTLS (use 465 for SSL)
-          username: ${{ secrets.OUTLOOK_EMAIL_USERNAME }}  # Your Outlook email address
-          password: ${{ secrets.OUTLOOK_EMAIL_PASSWORD }}  # Your Outlook password (direct password)
-          subject: "SonarQube Scan Report for PR #${{ github.event.pull_request.number }}"
-          body: |
-            SonarQube Scan Report for PR #${{ github.event.pull_request.number }}:
-            - Quality Gate Status: ${{ steps.fetch-metrics.outputs.quality_gate_status }}
-            - Code Coverage: ${{ steps.fetch-metrics.outputs.coverage }}%
-            - SonarQube Dashboard: ${{ secrets.SONAR_HOST_URL }}/dashboard?id=your_project_key
-          to: your-email@example.com  # Replace with the recipient email
-          from: ${{ secrets.OUTLOOK_EMAIL_USERNAME }}
-          attachments: sonar-report.html
-
       - name: Quality Gate Check
         uses: sonarsource/sonarqube-quality-gate-action@master
         env:
