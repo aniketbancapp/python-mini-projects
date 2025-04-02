@@ -52,6 +52,7 @@ jobs:
           CE_TASK_ID=$(grep "ceTaskId=" .scannerwork/report-task.txt | cut -d'=' -f2)
           echo "Task ID: $CE_TASK_ID"
 
+          # Wait for the analysis to finish
           for i in {1..30}; do
             TASK_STATUS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
             echo "Attempt $i: Status - $TASK_STATUS"
@@ -72,13 +73,12 @@ jobs:
 
       - name: Generate HTML Report
         run: |
-          # Get all required data
           PROJECT_KEY=$(grep "projectKey=" .scannerwork/report-task.txt | cut -d'=' -f2)
           DASHBOARD_URL=$(grep "dashboardUrl=" .scannerwork/report-task.txt | cut -d'=' -f2)
           CURRENT_DATE=$(date +"%Y-%m-%d %H:%M:%S")
           ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500")
 
-          # Create HTML report with real-time data
+          # Generate HTML report with real-time data
           cat << 'EOF' > sonar-report.html
           <!DOCTYPE html>
           <html lang="en">
@@ -185,15 +185,13 @@ jobs:
           MINOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MINOR")] | length')
           INFO_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "INFO")] | length')
 
-          sed -i "s|Critical Issues<\/div>\n.*<\/div>|Critical Issues<\/div>\n                  <div>$CRITICAL_COUNT<\/div>|g" sonar-report.html
-          sed -i "s|Major Issues<\/div>\n.*<\/div>|Major Issues<\/div>\n                  <div>$MAJOR_COUNT<\/div>|g" sonar-report.html
-          sed -i "s|Minor Issues<\/div>\n.*<\/div>|Minor Issues<\/div>\n                  <div>$MINOR_COUNT<\/div>|g" sonar-report.html
-          sed -i "s|Info Issues<\/div>\n.*<\/div>|Info Issues<\/div>\n                  <div>$INFO_COUNT<\/div>|g" sonar-report.html
+          sed -i "s|$(echo "$CRITICAL_COUNT")|$CRITICAL_COUNT|g" sonar-report.html
+          sed -i "s|$(echo "$MAJOR_COUNT")|$MAJOR_COUNT|g" sonar-report.html
+          sed -i "s|$(echo "$MINOR_COUNT")|$MINOR_COUNT|g" sonar-report.html
+          sed -i "s|$(echo "$INFO_COUNT")|$INFO_COUNT|g" sonar-report.html
 
-          echo "HTML report generated successfully"
-
-      - name: Upload HTML Report
-        uses: actions/upload-artifact@v4
+      - name: Upload HTML report as an artifact
+        uses: actions/upload-artifact@v3
         with:
           name: sonarqube-report
           path: sonar-report.html
