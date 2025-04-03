@@ -19,6 +19,7 @@ env:
 jobs:
   sonarqube-scan:
     name: SonarQube Scan with HTML Report
+    if: github.base_ref == 'qa' || github.base_ref == 'master' || github.base_ref == 'stage'
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
