@@ -1,4 +1,5 @@
 
+
 name: SonarQube Scan with HTML Report
 
 on:
@@ -229,7 +230,7 @@ jobs:
 
 
   deploy:
-    name: Deploy to Azure VM
+    name: Deploy to Respective Server
     needs: auto-merge
     runs-on: ubuntu-latest
 
@@ -237,26 +238,48 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Determine Deployment Server
+        id: determine-server
+        run: |
+          case "${{ github.base_ref }}" in
+            "master")
+              echo "DEPLOY_SERVER=20.198.126.18" >> $GITHUB_ENV
+              echo "Deploying to Production Server"
+              ;;
+            "qa")
+              echo "DEPLOY_SERVER=20.198.126.19" >> $GITHUB_ENV
+              echo "Deploying to QA Server"
+              ;;
+            "staging")
+              echo "DEPLOY_SERVER=20.198.126.20" >> $GITHUB_ENV
+              echo "Deploying to Staging Server"
+              ;;
+            *)
+              echo "Unknown branch: ${{ github.base_ref }}. No deployment."
+              exit 1
+              ;;
+          esac
+
       - name: Set up SSH key
         uses: webfactory/ssh-agent@v0.5.3
         with:
           ssh-private-key: ${{ secrets.AZURE_VM_SSH_KEY }}
 
-      - name: Deploy to Azure VM
+      - name: Deploy to the Selected Server
         run: |
-          echo "Deploying code to Azure VM..."
+          echo "Deploying code to $DEPLOY_SERVER..."
           
-          ssh -o StrictHostKeyChecking=no cicd@20.198.126.18 << 'EOF'
+          ssh -o StrictHostKeyChecking=no cicd@$DEPLOY_SERVER << 'EOF'
             echo "Cleaning old files..."
             sudo rm -rf /home/cicd/code/* /home/cicd/code/.[!.]* || exit 1
             echo "Old files removed."
           EOF
 
           echo "Transferring new files..."
-          scp -r -o StrictHostKeyChecking=no ./ cicd@20.198.126.18:/home/cicd/code
+          scp -r -o StrictHostKeyChecking=no ./ cicd@$DEPLOY_SERVER:/home/cicd/code
           echo "Code transferred."
 
-          ssh -o StrictHostKeyChecking=no cicd@20.198.126.18 << 'EOF'
+          ssh -o StrictHostKeyChecking=no cicd@$DEPLOY_SERVER << 'EOF'
             echo "Setting permissions..."
             sudo chown -R cicd:cicd /home/cicd/code/.git
             sudo chmod -R 775 /home/cicd/code/.git
