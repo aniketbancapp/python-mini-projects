@@ -1,0 +1,58 @@
+name: PR SonarQube Scan & AutoMerge
+
+on:
+  pull_request:
+    branches:
+      - master
+      - dev
+
+jobs:
+  sonar_scan:
+    name: SonarQube Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java (required for SonarQube)
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up Sonar Scanner
+        run: |
+          wget -qO - https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip | bsdtar -xvf- -C /opt
+          echo "/opt/sonar-scanner-5.0.1.3006-linux/bin" >> $GITHUB_PATH
+
+      - name: Run SonarQube Analysis
+        run: |
+          sonar-scanner \
+            -Dsonar.projectKey=your-project-key \
+            -Dsonar.organization=your-organization \
+            -Dsonar.host.url=https://sonarqube.yourdomain.com \
+            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+
+      - name: Check SonarQube Quality Gate
+        run: |
+          sleep 10  # Give some time for SonarQube processing
+          STATUS=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" "https://sonarqube.yourdomain.com/api/qualitygates/project_status?projectKey=your-project-key" | jq -r '.projectStatus.status')
+          echo "Quality Gate Status: $STATUS"
+          if [ "$STATUS" != "OK" ]; then
+            echo "Quality gate failed!"
+            exit 1
+          fi
+
+  auto_merge:
+    name: Auto Merge PR
+    needs: sonar_scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enable Auto-Merge
+        run: |
+          gh pr merge ${{ github.event.pull_request.html_url }} --auto --squash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
