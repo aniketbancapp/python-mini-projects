@@ -5,7 +5,7 @@ on:
     branches:
       - master
       - qa
-      - staging
+      - stage
     types: [opened, synchronize, reopened]
 
 permissions:
