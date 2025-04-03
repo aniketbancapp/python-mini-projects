@@ -1,58 +1,266 @@
-name: PR SonarQube Scan & AutoMerge
+name: SonarQube Scan with HTML Report
 
 on:
   pull_request:
     branches:
       - master
-      - dev
+      - qa
+      - staging
+    types: [opened, synchronize, reopened]
+
+permissions:
+  pull-requests: write
+  contents: write
+
+env:
+  SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
 jobs:
-  sonar_scan:
-    name: SonarQube Analysis
-    runs-on: ubuntu-latest
-
+  sonarqube-scan:
+    name: SonarQube Scan with HTML Report
+    runs-on: ubuntu-24.04
     steps:
-      - name: Checkout Code
+      - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Set up Java (required for SonarQube)
-        uses: actions/setup-java@v3
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Set up Sonar Scanner
+      - name: Install dependencies
         run: |
-          wget -qO - https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-5.0.1.3006-linux.zip | bsdtar -xvf- -C /opt
-          echo "/opt/sonar-scanner-5.0.1.3006-linux/bin" >> $GITHUB_PATH
+          sudo apt-get update
+          sudo apt-get install -y jq curl
 
-      - name: Run SonarQube Analysis
+      - name: Run SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
+        with:
+          args: >
+            -Dsonar.projectKey=python
+            -Dsonar.projectName="Python Project"
+            -Dsonar.projectVersion=1.0
+            -Dsonar.sources=.
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.host.url=${{ env.SONAR_HOST_URL }}
+            -Dsonar.login=${{ env.SONAR_TOKEN }}
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+
+      - name: Verify analysis completion
         run: |
-          sonar-scanner \
-            -Dsonar.projectKey=your-project-key \
-            -Dsonar.organization=your-organization \
-            -Dsonar.host.url=https://sonarqube.yourdomain.com \
-            -Dsonar.login=${{ secrets.SONAR_TOKEN }}
+          echo "Checking analysis status..."
+          CE_TASK_ID=$(grep "ceTaskId=" .scannerwork/report-task.txt | cut -d'=' -f2)
+          echo "Task ID: $CE_TASK_ID"
 
-      - name: Check SonarQube Quality Gate
+          for i in {1..30}; do
+            TASK_STATUS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
+            echo "Attempt $i: Status - $TASK_STATUS"
+            
+            case "$TASK_STATUS" in
+              "SUCCESS") break ;;
+              "FAILED"|"CANCELED") 
+                echo "Analysis failed or was canceled"
+                exit 1 ;;
+              *)
+                if [ $i -eq 30 ]; then
+                  echo "Timeout waiting for analysis completion"
+                  exit 1
+                fi
+                sleep 5 ;;
+            esac
+          done
+
+      - name: Generate HTML Report
         run: |
-          sleep 10  # Give some time for SonarQube processing
-          STATUS=$(curl -s -u "${{ secrets.SONAR_TOKEN }}:" "https://sonarqube.yourdomain.com/api/qualitygates/project_status?projectKey=your-project-key" | jq -r '.projectStatus.status')
-          echo "Quality Gate Status: $STATUS"
-          if [ "$STATUS" != "OK" ]; then
-            echo "Quality gate failed!"
-            exit 1
-          fi
+          # Get all required data
+          PROJECT_KEY=$(grep "projectKey=" .scannerwork/report-task.txt | cut -d'=' -f2)
+          DASHBOARD_URL=$(grep "dashboardUrl=" .scannerwork/report-task.txt | cut -d'=' -f2)
+          CURRENT_DATE=$(date +"%Y-%m-%d %H:%M:%S")
+          ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500")
 
-  auto_merge:
+          # Create HTML report with real-time data
+          cat << 'EOF' > sonar-report.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>SonarQube Report - $PROJECT_KEY</title>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; color: #333; }
+              .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+              h1 { color: #4b9fd5; margin: 0; }
+              .summary { background: #f5f5f5; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+              .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+              .metric { background: white; padding: 10px; border-radius: 4px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+              .metric-value { font-size: 24px; font-weight: bold; }
+              .critical { color: #d4333f; }
+              .major { color: #ed7d20; }
+              .minor { color: #f4c150; }
+              .info { color: #6a9b68; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+              th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #ddd; }
+              th { background-color: #4b9fd5; color: white; position: sticky; top: 0; }
+              tr:nth-child(even) { background-color: #f9f9f9; }
+              tr:hover { background-color: #f1f1f1; }
+              .severity { font-weight: bold; }
+              .severity-CRITICAL { color: #d4333f; }
+              .severity-MAJOR { color: #ed7d20; }
+              .severity-MINOR { color: #f4c150; }
+              .severity-INFO { color: #6a9b68; }
+              .footer { margin-top: 30px; text-align: center; font-size: 0.9em; color: #777; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>SonarQube Analysis Report</h1>
+              <div>Generated on $CURRENT_DATE</div>
+            </div>
+            
+            <div class="summary">
+              <h2>Project: $PROJECT_KEY</h2>
+              <div class="summary-grid">
+                <div class="metric">
+                  <div class="metric-value critical">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "CRITICAL")] | length')</div>
+                  <div>Critical Issues</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-value major">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MAJOR")] | length')</div>
+                  <div>Major Issues</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-value minor">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MINOR")] | length')</div>
+                  <div>Minor Issues</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-value info">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "INFO")] | length')</div>
+                  <div>Info Issues</div>
+                </div>
+              </div>
+            </div>
+            
+            <table>
+              <thead>
+                <tr>
+                  <th>Severity</th>
+                  <th>Type</th>
+                  <th>File</th>
+                  <th>Line</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+          EOF
+
+          # Add issues to the table
+          echo "$ISSUES_JSON" | jq -r '.issues[] | 
+            "<tr>
+              <td class=\"severity severity-\(.severity)\">\(.severity)</td>
+              <td>\(.type)</td>
+              <td>\(.component | sub(".*:"; ""))</td>
+              <td>\(.line // "N/A")</td>
+              <td>\(.message)</td>
+            </tr>"' >> sonar-report.html
+
+          # Close HTML document
+          cat << 'EOF' >> sonar-report.html
+              </tbody>
+            </table>
+            
+            <div class="footer">
+              <p>Report generated by GitHub Actions | <a href="$DASHBOARD_URL" target="_blank">View in SonarQube</a></p>
+            </div>
+          </body>
+          </html>
+          EOF
+
+          # Replace variables in the HTML
+          sed -i "s|\$PROJECT_KEY|$PROJECT_KEY|g" sonar-report.html
+          sed -i "s|\$DASHBOARD_URL|$DASHBOARD_URL|g" sonar-report.html
+          sed -i "s|\$CURRENT_DATE|$CURRENT_DATE|g" sonar-report.html
+
+          # Replace dynamic issue counts
+          CRITICAL_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "CRITICAL")] | length')
+          MAJOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MAJOR")] | length')
+          MINOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MINOR")] | length')
+          INFO_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "INFO")] | length')
+
+          sed -i "s|Critical Issues<\/div>\n.*<\/div>|Critical Issues<\/div>\n                  <div>$CRITICAL_COUNT<\/div>|g" sonar-report.html
+          sed -i "s|Major Issues<\/div>\n.*<\/div>|Major Issues<\/div>\n                  <div>$MAJOR_COUNT<\/div>|g" sonar-report.html
+          sed -i "s|Minor Issues<\/div>\n.*<\/div>|Minor Issues<\/div>\n                  <div>$MINOR_COUNT<\/div>|g" sonar-report.html
+          sed -i "s|Info Issues<\/div>\n.*<\/div>|Info Issues<\/div>\n                  <div>$INFO_COUNT<\/div>|g" sonar-report.html
+
+          echo "HTML report generated successfully"
+
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarqube-report
+          path: sonar-report.html
+
+      - name: Quality Gate Check
+        uses: sonarsource/sonarqube-quality-gate-action@master
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+
+  auto-merge:
     name: Auto Merge PR
-    needs: sonar_scan
-    runs-on: ubuntu-latest
+    if: success()
+    needs: sonarqube-scan
+    runs-on: ubuntu-24.04
     steps:
-      - name: Enable Auto-Merge
-        run: |
-          gh pr merge ${{ github.event.pull_request.html_url }} --auto --squash
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install GitHub CLI
+        run: sudo apt-get update && sudo apt-get install -y gh
+
+      - name: Auto Merge PR
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+          gh pr merge $PR_NUMBER --auto --merge
+
+
+  deploy:
+    name: Deploy to Azure VM
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/staging'
+    needs: auto-merge
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up SSH key
+        uses: webfactory/ssh-agent@v0.5.3
+        with:
+          ssh-private-key: ${{ secrets.AZURE_VM_SSH_KEY }}
+
+      - name: Deploy to Azure VM
+        run: |
+          echo "Deploying code to Azure VM..."
+          
+          ssh -o StrictHostKeyChecking=no cicd@20.198.126.18 << 'EOF'
+            echo "Cleaning old files..."
+            sudo rm -rf /home/cicd/code/* /home/cicd/code/.[!.]* || exit 1
+            echo "Old files removed."
+          EOF
+
+          echo "Transferring new files..."
+          scp -r -o StrictHostKeyChecking=no ./ cicd@20.198.126.18:/home/cicd/code
+          echo "Code transferred."
+
+          ssh -o StrictHostKeyChecking=no cicd@20.198.126.18 << 'EOF'
+            echo "Setting permissions..."
+            sudo chown -R cicd:cicd /home/cicd/code/.git
+            sudo chmod -R 775 /home/cicd/code/.git
+            echo "Permissions set."
+          EOF
+
+          echo "Deployment completed successfully!"
