@@ -2,10 +2,6 @@ name: SonarQube Scan with HTML Report
 
 on:
   pull_request:
-    branches:
-      - master
-      - qa
-      - stage
     types: [opened, synchronize, reopened]
 
 permissions:
