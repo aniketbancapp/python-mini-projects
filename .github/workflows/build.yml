@@ -2,6 +2,10 @@ name: SonarQube Scan with HTML Report
 
 on:
   pull_request:
+    branches:
+      - master
+      - qa
+      - staging
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -225,6 +229,7 @@ jobs:
 
   deploy:
     name: Deploy to Azure VM
+    if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/qa' || github.ref == 'refs/heads/staging'
     needs: auto-merge
     runs-on: ubuntu-latest
 
