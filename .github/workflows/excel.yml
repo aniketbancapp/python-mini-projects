@@ -39,34 +39,130 @@ jobs:
             -Dsonar.login=sqp_4816dedd6d794f8150d5e9df293c33312b3bd8ff
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 
-      - name: Fetch SonarQube Report
+      - name: Generate HTML Report
         run: |
-          curl -u sqp_4816dedd6d794f8150d5e9df293c33312b3bd8ff: \
-            "http://20.198.126.18:9000/api/qualitygates/project_status?projectKey=excel" \
-            -o sonar_quality_gate_status.json
+          # Get all required data
+          PROJECT_KEY=$(grep "projectKey=" .scannerwork/report-task.txt | cut -d'=' -f2)
+          DASHBOARD_URL=$(grep "dashboardUrl=" .scannerwork/report-task.txt | cut -d'=' -f2)
+          CURRENT_DATE=$(date +"%Y-%m-%d %H:%M:%S")
+          ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500")
 
-      - name: Convert to HTML
-        run: |
-          python3 -c "
-import json
-import os
+          # Create HTML report with real-time data
+          cat << 'EOF' > sonar-report.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>SonarQube Report - $PROJECT_KEY</title>
+            <style>
+              body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; color: #333; }
+              .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+              h1 { color: #4b9fd5; margin: 0; }
+              .summary { background: #f5f5f5; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
+              .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+              .metric { background: white; padding: 10px; border-radius: 4px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+              .metric-value { font-size: 24px; font-weight: bold; }
+              .critical { color: #d4333f; }
+              .major { color: #ed7d20; }
+              .minor { color: #f4c150; }
+              .info { color: #6a9b68; }
+              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+              th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #ddd; }
+              th { background-color: #4b9fd5; color: white; position: sticky; top: 0; }
+              tr:nth-child(even) { background-color: #f9f9f9; }
+              tr:hover { background-color: #f1f1f1; }
+              .severity { font-weight: bold; }
+              .severity-CRITICAL { color: #d4333f; }
+              .severity-MAJOR { color: #ed7d20; }
+              .severity-MINOR { color: #f4c150; }
+              .severity-INFO { color: #6a9b68; }
+              .footer { margin-top: 30px; text-align: center; font-size: 0.9em; color: #777; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>SonarQube Analysis Report</h1>
+              <div>Generated on $CURRENT_DATE</div>
+            </div>
+            
+            <div class="summary">
+              <h2>Project: $PROJECT_KEY</h2>
+              <div class="summary-grid">
+                <div class="metric">
+                  <div class="metric-value critical">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "CRITICAL")] | length')</div>
+                  <div>Critical Issues</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-value major">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MAJOR")] | length')</div>
+                  <div>Major Issues</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-value minor">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MINOR")] | length')</div>
+                  <div>Minor Issues</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-value info">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "INFO")] | length')</div>
+                  <div>Info Issues</div>
+                </div>
+              </div>
+            </div>
+            
+            <table>
+              <thead>
+                <tr>
+                  <th>Severity</th>
+                  <th>Type</th>
+                  <th>File</th>
+                  <th>Line</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+          EOF
 
-# Read the JSON data from the file
-with open('sonar_quality_gate_status.json') as f:
-    data = json.load(f)
+          # Add issues to the table
+          echo "$ISSUES_JSON" | jq -r '.issues[] | 
+            "<tr>
+              <td class=\"severity severity-\(.severity)\">\(.severity)</td>
+              <td>\(.type)</td>
+              <td>\(.component | sub(".*:"; ""))</td>
+              <td>\(.line // "N/A")</td>
+              <td>\(.message)</td>
+            </tr>"' >> sonar-report.html
 
-# Convert it to a basic HTML report
-html_content = '<html><body><h1>SonarQube Quality Gate Report</h1>'
-html_content += f"<p>Status: {data['projectStatus']['status']}</p>"
-html_content += "</body></html>"
+          # Close HTML document
+          cat << 'EOF' >> sonar-report.html
+              </tbody>
+            </table>
+            
+            <div class="footer">
+              <p>Report generated by GitHub Actions | <a href="$DASHBOARD_URL" target="_blank">View in SonarQube</a></p>
+            </div>
+          </body>
+          </html>
+          EOF
 
-# Save the HTML file
-with open('sonarqube_report.html', 'w') as html_file:
-    html_file.write(html_content)
-          "
-      
-      - name: Upload HTML Report as an artifact
-        uses: actions/upload-artifact@v3
+          # Replace variables in the HTML
+          sed -i "s|\$PROJECT_KEY|$PROJECT_KEY|g" sonar-report.html
+          sed -i "s|\$DASHBOARD_URL|$DASHBOARD_URL|g" sonar-report.html
+          sed -i "s|\$CURRENT_DATE|$CURRENT_DATE|g" sonar-report.html
+
+          # Replace dynamic issue counts
+          CRITICAL_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "CRITICAL")] | length')
+          MAJOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MAJOR")] | length')
+          MINOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MINOR")] | length')
+          INFO_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "INFO")] | length')
+
+          sed -i "s|Critical Issues<\/div>\n.*<\/div>|Critical Issues<\/div>\n                  <div>$CRITICAL_COUNT<\/div>|g" sonar-report.html
+          sed -i "s|Major Issues<\/div>\n.*<\/div>|Major Issues<\/div>\n                  <div>$MAJOR_COUNT<\/div>|g" sonar-report.html
+          sed -i "s|Minor Issues<\/div>\n.*<\/div>|Minor Issues<\/div>\n                  <div>$MINOR_COUNT<\/div>|g" sonar-report.html
+          sed -i "s|Info Issues<\/div>\n.*<\/div>|Info Issues<\/div>\n                  <div>$INFO_COUNT<\/div>|g" sonar-report.html
+
+          echo "HTML report generated successfully"
+
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v4
         with:
-          name: sonarqube-html-report
-          path: sonarqube_report.html
+          name: sonarqube-report
+          path: sonar-report.html
