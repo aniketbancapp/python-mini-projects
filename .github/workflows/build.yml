@@ -1,4 +1,4 @@
-name: SonarQube Scan with HTML Report
+name: SonarQube Scan with HTML Report and Optimized Deployment
 
 on:
   pull_request:
@@ -226,7 +226,6 @@ jobs:
           PR_NUMBER=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
           gh pr merge $PR_NUMBER --auto --merge
 
-
   deploy:
     name: Deploy to Respective Server
     needs: auto-merge
@@ -258,6 +257,16 @@ jobs:
               ;;
           esac
 
+      - name: Install zip/unzip
+        run: sudo apt-get update && sudo apt-get install -y zip unzip
+
+      - name: Create deployment package
+        run: |
+          echo "Creating deployment package..."
+          zip -r deployment.zip . -x '.git/*' -x '.github/*' -x '.scannerwork/*'
+          echo "Package created (deployment.zip)"
+          ls -lh deployment.zip
+
       - name: Set up SSH key
         uses: webfactory/ssh-agent@v0.5.3
         with:
@@ -267,17 +276,26 @@ jobs:
         run: |
           echo "Deploying code to $DEPLOY_SERVER..."
           
+          # Clean remote directory first
           ssh -o StrictHostKeyChecking=no cicd@$DEPLOY_SERVER << 'EOF'
             echo "Cleaning old files..."
             sudo rm -rf /home/cicd/code/* /home/cicd/code/.[!.]* || exit 1
             echo "Old files removed."
           EOF
 
-          echo "Transferring new files..."
-          scp -r -o StrictHostKeyChecking=no ./ cicd@$DEPLOY_SERVER:/home/cicd/code
-          echo "Code transferred."
+          # Transfer the zip file
+          echo "Transferring deployment package..."
+          scp -o StrictHostKeyChecking=no deployment.zip cicd@$DEPLOY_SERVER:/home/cicd/code/
+          echo "Package transferred."
 
+          # Unzip and set permissions
           ssh -o StrictHostKeyChecking=no cicd@$DEPLOY_SERVER << 'EOF'
+            echo "Unzipping deployment package..."
+            cd /home/cicd/code
+            unzip -q deployment.zip
+            rm deployment.zip
+            echo "Package unzipped."
+            
             echo "Setting permissions..."
             sudo chown -R cicd:cicd /home/cicd/code/.git
             sudo chmod -R 775 /home/cicd/code/.git
