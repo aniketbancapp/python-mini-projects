@@ -1,0 +1,123 @@
+name: SonarQube Scan with Excel Report
+
+on:
+  push:
+    branches: [ master ]
+
+jobs:
+  sonarqube-scan:
+    name: SonarQube Scan and Report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Needed to get commit history for SonarQube
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas openpyxl sonarqube
+
+      - name: Run SonarQube Scanner
+        uses: SonarSource/sonarqube-scan-action@master
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN2 }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+        with:
+          args: >
+            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
+            -Dsonar.projectName=${{ github.repository }}
+            -Dsonar.projectVersion=1.0
+            -Dsonar.sources=.
+            -Dsonar.python.version=3
+
+      - name: Generate Excel Report
+        run: |
+          python - <<EOF
+          import os
+          import pandas as pd
+          from sonarqube import SonarQubeClient
+          from datetime import datetime
+
+          # Connect to SonarQube
+          url = os.getenv('SONAR_HOST_URL')
+          token = os.getenv('SONAR_TOKEN')
+          project_key = os.getenv('SONAR_PROJECT_KEY')
+          
+          sonar = SonarQubeClient(sonarqube_url=url, token=token)
+
+          # Get project info
+          project = sonar.projects.get_project(project=project_key)
+          branch = os.getenv('GITHUB_REF_NAME', 'main')
+          commit_id = os.getenv('GITHUB_SHA')
+
+          # Get current date
+          now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+          # Create Summary sheet
+          summary_data = {
+              'Git URL': [f"https://github.com/{os.getenv('GITHUB_REPOSITORY')}"],
+              'Branch Name': [branch],
+              'Review Date': [now],
+              'Commit ID': [commit_id],
+              'Overall Findings': [''],
+              'Tool': ['Sonar', 'PMD', 'CPD', 'Total'],
+              'Count': ['=SUM(F14,I12,K9)', '=SUM(N14)', '=SUM(P9)', '=SUM(C9:C11)'],
+              'Sonar issues': [''],
+              'Severity': ['Blocker', 'Critical', 'Major', 'Minor', 'Info', 'Total'],
+              'Count': [44, 2723, 1823, 769, 31, '=SUM(F9:F13)'],
+              'Sonar security hotspot': [''],
+              'VulnerabilityProbability': ['Low', 'Medium', 'High', 'Total'],
+              'Count': [15, 33, 54, '=SUM(I9:I11)'],
+              'Sonar duplications': [''],
+              'No. of findings': [862, '', ''],
+              'PMD': [''],
+              'Priority': ['Low', 'Medium Low', 'Medium', 'Medium High', 'High', 'Total'],
+              'Count': [0, 0, 0, 0, 0, '=SUM(N9:N13)'],
+              'CPD': [''],
+              'No. of findings': [0, '', '']
+          }
+
+          # Create issues DataFrame
+          issues = sonar.issues.search_issues(componentKeys=project_key)
+          
+          issues_data = []
+          for issue in issues['issues']:
+              issues_data.append({
+                  'Si No': len(issues_data) + 1,
+                  'CreationDate': issue['creationDate'],
+                  'Rule': issue['rule'],
+                  'Type': issue['type'],
+                  'Severity': issue['severity'],
+                  'File': issue['component'],
+                  'Line': issue.get('line', ''),
+                  'Message': issue['message'],
+                  'Status': issue['status'],
+                  'TargetDate': '',
+                  'ClosedDate': '',
+                  'Remarks': ''
+              })
+
+          # Create Excel writer
+          with pd.ExcelWriter('sonarqube_report.xlsx') as writer:
+              # Write Summary sheet
+              summary_df = pd.DataFrame(summary_data)
+              summary_df.to_excel(writer, sheet_name='Summary', index=False)
+              
+              # Write Issues sheet
+              issues_df = pd.DataFrame(issues_data)
+              issues_df.to_excel(writer, sheet_name='SonarIssues', index=False)
+
+          print("Excel report generated successfully")
+          EOF
+
+      - name: Upload Excel Report
+        uses: actions/upload-artifact@v3
+        with:
+          name: sonarqube-report
+          path: sonarqube_report.xlsx
