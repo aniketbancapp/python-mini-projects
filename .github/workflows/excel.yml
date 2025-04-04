@@ -1,3 +1,5 @@
+2
+
 name: SonarQube Scan with Excel Report
 
 on:
@@ -6,35 +8,37 @@ on:
 
 jobs:
   sonarqube-scan:
-    name: SonarQube Scan and Report
-    runs-on: ubuntu-latest
+    name: SonarQube Scan with HTML Report
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout code
+        uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # Needed to get commit history for SonarQube
+          fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Set up Java
+        uses: actions/setup-java@v4
         with:
-          python-version: '3.x'
+          distribution: 'temurin'
+          java-version: '17'
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install pandas openpyxl sonarqube
+          sudo apt-get update
+          sudo apt-get install -y jq curl
 
-      - name: Run SonarQube Scanner
-        uses: SonarSource/sonarqube-scan-action@master
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN2 }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      - name: Run SonarQube Scan
+        uses: sonarsource/sonarqube-scan-action@master
         with:
           args: >
-            -Dsonar.projectKey=${{ secrets.SONAR_PROJECT_KEY }}
-            -Dsonar.projectName=${{ github.repository }}
+            -Dsonar.projectKey=excel
+            -Dsonar.projectName="excel"
             -Dsonar.projectVersion=1.0
             -Dsonar.sources=.
-            -Dsonar.python.version=3
+            -Dsonar.sourceEncoding=UTF-8
+            -Dsonar.host.url=${{ env.SONAR_HOST_URL }}
+            -Dsonar.login=${{ env.SONAR_TOKEN2 }}
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 
       - name: Generate Excel Report
         run: |
