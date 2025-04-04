@@ -89,16 +89,17 @@ jobs:
           MEASURES_JSON=$(safe_curl "$SONAR_HOST_URL/api/measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots,duplicated_lines_density,reliability_rating,security_rating,sqale_rating,security_review_rating")
           
           # Extract specific metrics with defaults (corrected jq syntax)
-          BUGS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "bugs") | .value // "0"')
-          VULNERABILITIES=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "vulnerabilities") | .value // "0"')
-          CODE_SMELLS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "code_smells") | .value // "0"')
-          SECURITY_HOTSPOTS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "security_hotspots") | .value // "0"')
-          DUPLICATION=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "duplicated_lines_density") | .value // "0"')
+          BUGS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "bugs") | .value // "0"')
+          VULNERABILITIES=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "vulnerabilities") | .value // "0"')
+          CODE_SMELLS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "code_smells") | .value // "0"')
+          SECURITY_HOTSPOTS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "security_hotspots") | .value // "0"')
+          DUPLICATION=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "duplicated_lines_density") | .value // "0"')
 
-          RELIABILITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "reliability_rating") | .value // "1.0"')
-          SECURITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "security_rating") | .value // "1.0"')
-          MAINTAINABILITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "sqale_rating") | .value // "1.0"')
-          SECURITY_REVIEW_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "security_review_rating") | .value // "1.0"')
+          RELIABILITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "reliability_rating") | .value // "1.0"')
+          SECURITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "security_rating") | .value // "1.0"')
+          MAINTAINABILITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "sqale_rating") | .value // "1.0"')
+          SECURITY_REVIEW_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "security_review_rating") | .value // "1.0"')
+
 
           
           # Convert ratings to letter grades
@@ -198,4 +199,3 @@ jobs:
         with:
           name: sonarqube-report
           path: sonar-report.html
-        
