@@ -88,18 +88,18 @@ jobs:
           ISSUES_JSON=$(safe_curl "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500")
           MEASURES_JSON=$(safe_curl "$SONAR_HOST_URL/api/measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots,duplicated_lines_density,reliability_rating,security_rating,sqale_rating,security_review_rating")
           
-          # Extract specific metrics with defaults
-          BUGS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "bugs")?.value // "0"')
-          VULNERABILITIES=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "vulnerabilities")?.value // "0"')
-          CODE_SMELLS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "code_smells")?.value // "0"')
-          SECURITY_HOTSPOTS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "security_hotspots")?.value // "0"')
-          DUPLICATION=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "duplicated_lines_density")?.value // "0"')
+          # Extract specific metrics with defaults (corrected jq syntax)
+          BUGS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "bugs")?.value // "0"')
+          VULNERABILITIES=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "vulnerabilities")?.value // "0"')
+          CODE_SMELLS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "code_smells")?.value // "0"')
+          SECURITY_HOTSPOTS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "security_hotspots")?.value // "0"')
+          DUPLICATION=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "duplicated_lines_density")?.value // "0"')
           
           # Get ratings with defaults
-          RELIABILITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "reliability_rating")?.value // "1.0"')
-          SECURITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "security_rating")?.value // "1.0"')
-          MAINTAINABILITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "sqale_rating")?.value // "1.0"')
-          SECURITY_REVIEW_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[]? | select(.metric == "security_review_rating")?.value // "1.0"')
+          RELIABILITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "reliability_rating")?.value // "1.0"')
+          SECURITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "security_rating")?.value // "1.0"')
+          MAINTAINABILITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "sqale_rating")?.value // "1.0"')
+          SECURITY_REVIEW_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "security_review_rating")?.value // "1.0"')
           
           # Convert ratings to letter grades
           convert_rating_to_letter() {
@@ -119,11 +119,11 @@ jobs:
           HOTSPOT_GRADE=$(convert_rating_to_letter "$SECURITY_REVIEW_RATING")
           
           # Get counts by severity with defaults
-          BLOCKER_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[]? | select(.severity == "BLOCKER")] | length // 0')
-          CRITICAL_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[]? | select(.severity == "CRITICAL")] | length // 0')
-          MAJOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[]? | select(.severity == "MAJOR")] | length // 0')
-          MINOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[]? | select(.severity == "MINOR")] | length // 0')
-          INFO_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[]? | select(.severity == "INFO")] | length // 0')
+          BLOCKER_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "BLOCKER")] | length // 0')
+          CRITICAL_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "CRITICAL")] | length // 0')
+          MAJOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MAJOR")] | length // 0')
+          MINOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MINOR")] | length // 0')
+          INFO_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "INFO")] | length // 0')
           TOTAL_ISSUES=$(($BLOCKER_COUNT + $CRITICAL_COUNT + $MAJOR_COUNT + $MINOR_COUNT + $INFO_COUNT))
           
           # Get security hotspot counts with defaults
@@ -134,62 +134,62 @@ jobs:
 
           # Create HTML report
           cat <<EOF > sonar-report.html
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SonarQube Report - $PROJECT_KEY</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 20px; }
-              table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-              th { background-color: #f2f2f2; }
-              .header { margin-bottom: 30px; }
-              .section-title { font-weight: bold; margin: 20px 0 10px 0; }
-              .grade-A { color: green; font-weight: bold; }
-              .grade-B { color: #9ACD32; font-weight: bold; }
-              .grade-C { color: orange; font-weight: bold; }
-              .grade-D { color: #FF6347; font-weight: bold; }
-              .grade-E { color: red; font-weight: bold; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <h1>SonarQube Scan Report - $PROJECT_KEY</h1>
-              <p>Date: $CURRENT_DATE</p>
-              <p>Project Dashboard: <a href="$DASHBOARD_URL" target="_blank">View Dashboard</a></p>
-            </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SonarQube Report - $PROJECT_KEY</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+    th { background-color: #f2f2f2; }
+    .header { margin-bottom: 30px; }
+    .section-title { font-weight: bold; margin: 20px 0 10px 0; }
+    .grade-A { color: green; font-weight: bold; }
+    .grade-B { color: #9ACD32; font-weight: bold; }
+    .grade-C { color: orange; font-weight: bold; }
+    .grade-D { color: #FF6347; font-weight: bold; }
+    .grade-E { color: red; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>SonarQube Scan Report - $PROJECT_KEY</h1>
+    <p>Date: $CURRENT_DATE</p>
+    <p>Project Dashboard: <a href="$DASHBOARD_URL" target="_blank">View Dashboard</a></p>
+  </div>
 
-            <div class="section-title">Summary</div>
-            <table>
-              <tr><th>Total Issues</th><td>$TOTAL_ISSUES</td></tr>
-              <tr><th>Bugs</th><td>$BUGS ($BUG_GRADE)</td></tr>
-              <tr><th>Vulnerabilities</th><td>$VULNERABILITIES ($VULNERABILITY_GRADE)</td></tr>
-              <tr><th>Code Smells</th><td>$CODE_SMELLS ($CODE_SMELL_GRADE)</td></tr>
-              <tr><th>Security Hotspots</th><td>$SECURITY_HOTSPOTS ($HOTSPOT_GRADE)</td></tr>
-              <tr><th>Duplications</th><td>$DUPLICATION%</td></tr>
-            </table>
+  <div class="section-title">Summary</div>
+  <table>
+    <tr><th>Total Issues</th><td>$TOTAL_ISSUES</td></tr>
+    <tr><th>Bugs</th><td>$BUGS <span class="grade-$BUG_GRADE">($BUG_GRADE)</span></td></tr>
+    <tr><th>Vulnerabilities</th><td>$VULNERABILITIES <span class="grade-$VULNERABILITY_GRADE">($VULNERABILITY_GRADE)</span></td></tr>
+    <tr><th>Code Smells</th><td>$CODE_SMELLS <span class="grade-$CODE_SMELL_GRADE">($CODE_SMELL_GRADE)</span></td></tr>
+    <tr><th>Security Hotspots</th><td>$SECURITY_HOTSPOTS <span class="grade-$HOTSPOT_GRADE">($HOTSPOT_GRADE)</span></td></tr>
+    <tr><th>Duplications</th><td>$DUPLICATION%</td></tr>
+  </table>
 
-            <div class="section-title">Issues by Severity</div>
-            <table>
-              <tr><th>Blocker</th><td>$BLOCKER_COUNT</td></tr>
-              <tr><th>Critical</th><td>$CRITICAL_COUNT</td></tr>
-              <tr><th>Major</th><td>$MAJOR_COUNT</td></tr>
-              <tr><th>Minor</th><td>$MINOR_COUNT</td></tr>
-              <tr><th>Info</th><td>$INFO_COUNT</td></tr>
-            </table>
+  <div class="section-title">Issues by Severity</div>
+  <table>
+    <tr><th>Blocker</th><td>$BLOCKER_COUNT</td></tr>
+    <tr><th>Critical</th><td>$CRITICAL_COUNT</td></tr>
+    <tr><th>Major</th><td>$MAJOR_COUNT</td></tr>
+    <tr><th>Minor</th><td>$MINOR_COUNT</td></tr>
+    <tr><th>Info</th><td>$INFO_COUNT</td></tr>
+  </table>
 
-            <div class="section-title">Security Hotspots</div>
-            <table>
-              <tr><th>Low</th><td>$HOTSPOT_LOW</td></tr>
-              <tr><th>Medium</th><td>$HOTSPOT_MEDIUM</td></tr>
-              <tr><th>High</th><td>$HOTSPOT_HIGH</td></tr>
-              <tr><th>Total Hotspots</th><td>$HOTSPOT_TOTAL</td></tr>
-            </table>
-          </body>
-          </html>
-          EOF
+  <div class="section-title">Security Hotspots</div>
+  <table>
+    <tr><th>Low</th><td>$HOTSPOT_LOW</td></tr>
+    <tr><th>Medium</th><td>$HOTSPOT_MEDIUM</td></tr>
+    <tr><th>High</th><td>$HOTSPOT_HIGH</td></tr>
+    <tr><th>Total Hotspots</th><td>$HOTSPOT_TOTAL</td></tr>
+  </table>
+</body>
+</html>
+EOF
           echo "HTML report generated at sonar-report.html"
 
       - name: Upload HTML Report
