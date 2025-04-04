@@ -39,232 +39,34 @@ jobs:
             -Dsonar.login=sqp_4816dedd6d794f8150d5e9df293c33312b3bd8ff
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 
-      - name: Generate HTML Report
-        env:
-          SONAR_HOST_URL: http://20.198.126.18:9000
-          SONAR_TOKEN: sqp_4816dedd6d794f8150d5e9df293c33312b3bd8ff
-          SONAR_PROJECT_KEY: excel
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          GITHUB_SHA: ${{ github.sha }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
+      - name: Fetch SonarQube Report
         run: |
-          python3 - <<EOF
-          import os
-          import subprocess
-          from sonarqube import SonarQubeClient
-          from datetime import datetime
+          curl -u sqp_4816dedd6d794f8150d5e9df293c33312b3bd8ff: \
+            "http://20.198.126.18:9000/api/qualitygates/project_status?projectKey=excel" \
+            -o sonar_quality_gate_status.json
 
-          # Configuration
-          url = os.getenv('SONAR_HOST_URL')
-          token = os.getenv('SONAR_TOKEN')
-          project_key = os.getenv('SONAR_PROJECT_KEY')
-          branch = os.getenv('GITHUB_REF_NAME', 'main')
-          commit_id = os.getenv('GITHUB_SHA')
-          repo = os.getenv('GITHUB_REPOSITORY')
-          now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+      - name: Convert to HTML
+        run: |
+          python3 -c "
+import json
+import os
 
-          # Connect to SonarQube
-          sonar = SonarQubeClient(sonarqube_url=url, token=token)
+# Read the JSON data from the file
+with open('sonar_quality_gate_status.json') as f:
+    data = json.load(f)
 
-          # Get issues
-          issues = sonar.issues.search_issues(componentKeys=project_key)
-          issues_data = []
-          for issue in issues['issues']:
-              issues_data.append({
-                  'Si No': len(issues_data) + 1,
-                  'CreationDate': issue.get('creationDate'),
-                  'Rule': issue.get('rule'),
-                  'Type': issue.get('type'),
-                  'Severity': issue.get('severity'),
-                  'File': issue.get('component'),
-                  'Line': issue.get('line', ''),
-                  'Message': issue.get('message'),
-                  'Status': issue.get('status'),
-                  'TargetDate': '',
-                  'ClosedDate': '',
-                  'Remarks': ''
-              })
+# Convert it to a basic HTML report
+html_content = '<html><body><h1>SonarQube Quality Gate Report</h1>'
+html_content += f"<p>Status: {data['projectStatus']['status']}</p>"
+html_content += "</body></html>"
 
-          # HTML Report Generation
-          html_content = f"""
-          <!DOCTYPE html>
-          <html>
-          <head>
-              <title>SonarQube Report</title>
-              <style>
-                  body {{ font-family: Arial, sans-serif; margin: 20px; }}
-                  table {{ border-collapse: collapse; width: 100%; margin-bottom: 20px; }}
-                  th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-                  th {{ background-color: #f2f2f2; }}
-                  .summary-table {{ width: 100%; }}
-                  .issues-table {{ width: 100%; }}
-                  .header {{ margin-bottom: 20px; }}
-                  .section {{ margin-bottom: 30px; }}
-                  .section-title {{ font-size: 18px; font-weight: bold; margin-bottom: 10px; }}
-              </style>
-          </head>
-          <body>
-              <div class="header">
-                  <h1>SonarQube Analysis Report</h1>
-                  <p><strong>Git URL:</strong> https://github.com/{repo}</p>
-                  <p><strong>Branch Name:</strong> {branch}</p>
-                  <p><strong>Review Date:</strong> {now}</p>
-                  <p><strong>Commit ID:</strong> {commit_id}</p>
-              </div>
-
-              <div class="section">
-                  <div class="section-title">Overall Findings</div>
-                  <table class="summary-table">
-                      <tr>
-                          <th>Tool</th>
-                          <th>Count</th>
-                          <th>Severity</th>
-                          <th>Count</th>
-                          <th>Vulnerability Probability</th>
-                          <th>Count</th>
-                          <th>No. of findings</th>
-                          <th>Priority</th>
-                          <th>Count</th>
-                          <th>No. of findings</th>
-                      </tr>
-                      <tr>
-                          <td>Sonar</td>
-                          <td>6354</td>
-                          <td>Blocker</td>
-                          <td>44</td>
-                          <td>Low</td>
-                          <td>15</td>
-                          <td rowspan="4">862</td>
-                          <td>Low</td>
-                          <td>0</td>
-                          <td rowspan="4">0</td>
-                      </tr>
-                      <tr>
-                          <td>PMD</td>
-                          <td>0</td>
-                          <td>Critical</td>
-                          <td>2723</td>
-                          <td>Medium</td>
-                          <td>33</td>
-                          <td>Medium Low</td>
-                          <td>0</td>
-                      </tr>
-                      <tr>
-                          <td>CPD</td>
-                          <td>0</td>
-                          <td>Major</td>
-                          <td>1823</td>
-                          <td>High</td>
-                          <td>54</td>
-                          <td>Medium</td>
-                          <td>0</td>
-                      </tr>
-                      <tr>
-                          <td>Total</td>
-                          <td>6354</td>
-                          <td>Minor</td>
-                          <td>769</td>
-                          <td>Total</td>
-                          <td>102</td>
-                          <td>Medium High</td>
-                          <td>0</td>
-                      </tr>
-                      <tr>
-                          <td></td>
-                          <td></td>
-                          <td>Info</td>
-                          <td>31</td>
-                          <td></td>
-                          <td></td>
-                          <td></td>
-                          <td>High</td>
-                          <td>0</td>
-                          <td></td>
-                      </tr>
-                      <tr>
-                          <td></td>
-                          <td></td>
-                          <td>Total</td>
-                          <td>5390</td>
-                          <td></td>
-                          <td></td>
-                          <td></td>
-                          <td>Total</td>
-                          <td>0</td>
-                          <td></td>
-                      </tr>
-                  </table>
-              </div>
-
-              <div class="section">
-                  <div class="section-title">SonarQube Grades</div>
-                  <table class="summary-table">
-                      <tr>
-                          <th>Category</th>
-                          <th>Grade</th>
-                          <th>Description</th>
-                      </tr>
-                      <tr>
-                          <td>Bug</td>
-                          <td>E</td>
-                          <td>Reliability rating is E when there is at least one blocker bug.</td>
-                      </tr>
-                      <tr>
-                          <td>Vulnerability</td>
-                          <td>D</td>
-                          <td>Security rating is D when there is at least one critical vulnerability.</td>
-                      </tr>
-                      <tr>
-                          <td>Code Smell</td>
-                          <td>A</td>
-                          <td>Maintainability rating is A when the technical debt ratio is less than 5.0%.</td>
-                      </tr>
-                      <tr>
-                          <td>Security Hotspot</td>
-                          <td>E</td>
-                          <td>Security Review rating is E when less than 30% of Security Hotspots are reviewed.</td>
-                      </tr>
-                  </table>
-              </div>
-
-              <div class="section">
-                  <div class="section-title">Sonar Issues</div>
-                  <table class="issues-table">
-                      <tr>
-                          <th>Si No</th>
-                          <th>Creation Date</th>
-                          <th>Rule</th>
-                          <th>Type</th>
-                          <th>Severity</th>
-                          <th>File</th>
-                          <th>Line</th>
-                          <th>Message</th>
-                          <th>Status</th>
-                          <th>Target Date</th>
-                          <th>Closed Date</th>
-                          <th>Remarks</th>
-                      </tr>
-                      {"".join([
-                          f"<tr><td>{issue['Si No']}</td><td>{issue['CreationDate']}</td><td>{issue['Rule']}</td>"
-                          f"<td>{issue['Type']}</td><td>{issue['Severity']}</td><td>{issue['File']}</td>"
-                          f"<td>{issue['Line']}</td><td>{issue['Message']}</td><td>{issue['Status']}</td>"
-                          f"<td>{issue['TargetDate']}</td><td>{issue['ClosedDate']}</td><td>{issue['Remarks']}</td></tr>"
-                          for issue in issues_data
-                      ])}
-                  </table>
-              </div>
-          </body>
-          </html>
-          """
-
-          with open('sonarqube_report.html', 'w') as f:
-              f.write(html_content)
-
-          print("HTML report generated successfully.")
-          EOF
-
-      - name: Upload HTML Report
-        uses: actions/upload-artifact@v4
+# Save the HTML file
+with open('sonarqube_report.html', 'w') as html_file:
+    html_file.write(html_content)
+          "
+      
+      - name: Upload HTML Report as an artifact
+        uses: actions/upload-artifact@v3
         with:
-          name: sonarqube-report
+          name: sonarqube-html-report
           path: sonarqube_report.html
