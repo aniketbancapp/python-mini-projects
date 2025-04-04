@@ -4,10 +4,6 @@ on:
   push:
     branches: [ master ]
 
-permissions:
-  pull-requests: write
-  contents: write
-
 env:
   SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
   SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -75,10 +71,55 @@ jobs:
           # Get all required data
           PROJECT_KEY=$(grep "projectKey=" .scannerwork/report-task.txt | cut -d'=' -f2)
           DASHBOARD_URL=$(grep "dashboardUrl=" .scannerwork/report-task.txt | cut -d'=' -f2)
-          CURRENT_DATE=$(date +"%Y-%m-%d %H:%M:%S")
+          CURRENT_DATE=$(date +"%m/%d/%Y")
           ISSUES_JSON=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500")
+          MEASURES_JSON=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots,duplicated_lines_density,reliability_rating,security_rating,sqale_rating,security_review_rating")
+          
+          # Extract specific metrics
+          BUGS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "bugs") | .value')
+          VULNERABILITIES=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "vulnerabilities") | .value')
+          CODE_SMELLS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "code_smells") | .value')
+          SECURITY_HOTSPOTS=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "security_hotspots") | .value')
+          DUPLICATION=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "duplicated_lines_density") | .value')
+          
+          # Get ratings
+          RELIABILITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "reliability_rating") | .value')
+          SECURITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "security_rating") | .value')
+          MAINTAINABILITY_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "sqale_rating") | .value')
+          SECURITY_REVIEW_RATING=$(echo "$MEASURES_JSON" | jq -r '.component.measures[] | select(.metric == "security_review_rating") | .value')
+          
+          # Convert ratings to letter grades
+          convert_rating_to_letter() {
+            case $1 in
+              "1.0") echo "A" ;;
+              "2.0") echo "B" ;;
+              "3.0") echo "C" ;;
+              "4.0") echo "D" ;;
+              "5.0") echo "E" ;;
+              *) echo "N/A" ;;
+            esac
+          }
+          
+          BUG_GRADE=$(convert_rating_to_letter "$RELIABILITY_RATING")
+          VULNERABILITY_GRADE=$(convert_rating_to_letter "$SECURITY_RATING")
+          CODE_SMELL_GRADE=$(convert_rating_to_letter "$MAINTAINABILITY_RATING")
+          HOTSPOT_GRADE=$(convert_rating_to_letter "$SECURITY_REVIEW_RATING")
+          
+          # Get counts by severity
+          BLOCKER_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "BLOCKER")] | length')
+          CRITICAL_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "CRITICAL")] | length')
+          MAJOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MAJOR")] | length')
+          MINOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MINOR")] | length')
+          INFO_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "INFO")] | length')
+          TOTAL_ISSUES=$(($BLOCKER_COUNT + $CRITICAL_COUNT + $MAJOR_COUNT + $MINOR_COUNT + $INFO_COUNT))
+          
+          # Get security hotspot counts by vulnerability probability
+          HOTSPOT_LOW=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&vulnerabilityProbability=LOW" | jq '.paging.total')
+          HOTSPOT_MEDIUM=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&vulnerabilityProbability=MEDIUM" | jq '.paging.total')
+          HOTSPOT_HIGH=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&vulnerabilityProbability=HIGH" | jq '.paging.total')
+          HOTSPOT_TOTAL=$(($HOTSPOT_LOW + $HOTSPOT_MEDIUM + $HOTSPOT_HIGH))
 
-          # Create HTML report with real-time data
+          # Create HTML report with the requested format
           cat << 'EOF' > sonar-report.html
           <!DOCTYPE html>
           <html lang="en">
@@ -87,87 +128,161 @@ jobs:
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>SonarQube Report - $PROJECT_KEY</title>
             <style>
-              body { font-family: Arial, sans-serif; line-height: 1.6; margin: 0; padding: 20px; color: #333; }
-              .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-              h1 { color: #4b9fd5; margin: 0; }
-              .summary { background: #f5f5f5; padding: 15px; border-radius: 4px; margin-bottom: 20px; }
-              .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-              .metric { background: white; padding: 10px; border-radius: 4px; text-align: center; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-              .metric-value { font-size: 24px; font-weight: bold; }
-              .critical { color: #d4333f; }
-              .major { color: #ed7d20; }
-              .minor { color: #f4c150; }
-              .info { color: #6a9b68; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              th, td { padding: 12px 15px; text-align: left; border-bottom: 1px solid #ddd; }
-              th { background-color: #4b9fd5; color: white; position: sticky; top: 0; }
-              tr:nth-child(even) { background-color: #f9f9f9; }
-              tr:hover { background-color: #f1f1f1; }
-              .severity { font-weight: bold; }
-              .severity-CRITICAL { color: #d4333f; }
-              .severity-MAJOR { color: #ed7d20; }
-              .severity-MINOR { color: #f4c150; }
-              .severity-INFO { color: #6a9b68; }
-              .footer { margin-top: 30px; text-align: center; font-size: 0.9em; color: #777; }
+              body { font-family: Arial, sans-serif; margin: 20px; }
+              table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
+              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              th { background-color: #f2f2f2; }
+              .header { margin-bottom: 30px; }
+              .section-title { font-weight: bold; margin: 20px 0 10px 0; }
+              .grade-A { color: green; font-weight: bold; }
+              .grade-B { color: #9ACD32; font-weight: bold; }
+              .grade-C { color: orange; font-weight: bold; }
+              .grade-D { color: #FF6347; font-weight: bold; }
+              .grade-E { color: red; font-weight: bold; }
             </style>
           </head>
           <body>
             <div class="header">
-              <h1>SonarQube Analysis Report</h1>
-              <div>Generated on $CURRENT_DATE</div>
-            </div>
-            
-            <div class="summary">
-              <h2>Project: $PROJECT_KEY</h2>
-              <div class="summary-grid">
-                <div class="metric">
-                  <div class="metric-value critical">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "CRITICAL")] | length')</div>
-                  <div>Critical Issues</div>
-                </div>
-                <div class="metric">
-                  <div class="metric-value major">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MAJOR")] | length')</div>
-                  <div>Major Issues</div>
-                </div>
-                <div class="metric">
-                  <div class="metric-value minor">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MINOR")] | length')</div>
-                  <div>Minor Issues</div>
-                </div>
-                <div class="metric">
-                  <div class="metric-value info">$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "INFO")] | length')</div>
-                  <div>Info Issues</div>
-                </div>
-              </div>
+              <h1>Code Review Report</h1>
             </div>
             
             <table>
-              <thead>
-                <tr>
-                  <th>Severity</th>
-                  <th>Type</th>
-                  <th>File</th>
-                  <th>Line</th>
-                  <th>Message</th>
-                </tr>
-              </thead>
-              <tbody>
-          EOF
-
-          # Add issues to the table
-          echo "$ISSUES_JSON" | jq -r '.issues[] | 
-            "<tr>
-              <td class=\"severity severity-\(.severity)\">\(.severity)</td>
-              <td>\(.type)</td>
-              <td>\(.component | sub(".*:"; ""))</td>
-              <td>\(.line // "N/A")</td>
-              <td>\(.message)</td>
-            </tr>"' >> sonar-report.html
-
-          # Close HTML document
-          cat << 'EOF' >> sonar-report.html
-              </tbody>
+              <tr>
+                <td><strong>Git URL</strong></td>
+                <td colspan="7">https://git.npci.org.in/nach_runtech_dev/bancapp_rpa/reconsyde_rupay.git</td>
+              </tr>
+              <tr>
+                <td><strong>Branch Name</strong></td>
+                <td colspan="7">main</td>
+              </tr>
+              <tr>
+                <td><strong>Review Date</strong></td>
+                <td colspan="7">$CURRENT_DATE</td>
+              </tr>
+              <tr>
+                <td><strong>Commit ID</strong></td>
+                <td colspan="7">none</td>
+              </tr>
             </table>
             
-            <div class="footer">
+            <div class="section-title">Overall Findings</div>
+            <table>
+              <tr>
+                <td rowspan="2"><strong>Tool</strong></td>
+                <td rowspan="2"><strong>Count</strong></td>
+                <td colspan="5"><strong>Sonar issues</strong></td>
+                <td colspan="3"><strong>Sonar security hotspot</strong></td>
+                <td rowspan="2"><strong>Sonar duplications</strong></td>
+                <td colspan="2"><strong>PMD</strong></td>
+                <td colspan="2"><strong>CPD</strong></td>
+              </tr>
+              <tr>
+                <td><strong>Severity</strong></td>
+                <td><strong>Count</strong></td>
+                <td><strong>VulnerabilityProbability</strong></td>
+                <td><strong>Count</strong></td>
+                <td><strong>No. of findings</strong></td>
+                <td><strong>Priority</strong></td>
+                <td><strong>Count</strong></td>
+                <td><strong>No. of findings</strong></td>
+              </tr>
+              <tr>
+                <td>Sonar</td>
+                <td>$TOTAL_ISSUES</td>
+                <td>Blocker</td>
+                <td>$BLOCKER_COUNT</td>
+                <td>Low</td>
+                <td>$HOTSPOT_LOW</td>
+                <td rowspan="5">$DUPLICATION%</td>
+                <td>Low</td>
+                <td>0</td>
+                <td rowspan="5">0</td>
+              </tr>
+              <tr>
+                <td>PMD</td>
+                <td>0</td>
+                <td>Critical</td>
+                <td>$CRITICAL_COUNT</td>
+                <td>Medium</td>
+                <td>$HOTSPOT_MEDIUM</td>
+                <td>Medium Low</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>CPD</td>
+                <td>0</td>
+                <td>Major</td>
+                <td>$MAJOR_COUNT</td>
+                <td>High</td>
+                <td>$HOTSPOT_HIGH</td>
+                <td>Medium</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td>Total</td>
+                <td>$TOTAL_ISSUES</td>
+                <td>Minor</td>
+                <td>$MINOR_COUNT</td>
+                <td>Total</td>
+                <td>$HOTSPOT_TOTAL</td>
+                <td>Medium High</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td></td>
+                <td></td>
+                <td>Info</td>
+                <td>$INFO_COUNT</td>
+                <td></td>
+                <td></td>
+                <td>High</td>
+                <td>0</td>
+              </tr>
+              <tr>
+                <td></td>
+                <td></td>
+                <td>Total</td>
+                <td>$TOTAL_ISSUES</td>
+                <td></td>
+                <td></td>
+                <td>Total</td>
+                <td>0</td>
+                <td></td>
+                <td></td>
+                <td></td>
+              </tr>
+            </table>
+            
+            <div class="section-title">SonarQube Grades</div>
+            <table>
+              <tr>
+                <td><strong>Category</strong></td>
+                <td><strong>Grade</strong></td>
+                <td><strong>Description</strong></td>
+              </tr>
+              <tr>
+                <td>Bug</td>
+                <td class="grade-$BUG_GRADE">$BUG_GRADE</td>
+                <td>Reliability rating is $BUG_GRADE when there is at least one blocker bug.</td>
+              </tr>
+              <tr>
+                <td>Vulnerability</td>
+                <td class="grade-$VULNERABILITY_GRADE">$VULNERABILITY_GRADE</td>
+                <td>Security rating is $VULNERABILITY_GRADE when there is at least one critical vulnerability.</td>
+              </tr>
+              <tr>
+                <td>Code Smell</td>
+                <td class="grade-$CODE_SMELL_GRADE">$CODE_SMELL_GRADE</td>
+                <td>Maintainability rating is $CODE_SMELL_GRADE when the technical debt ratio is less than 5.0%.</td>
+              </tr>
+              <tr>
+                <td>Security Hotspot</td>
+                <td class="grade-$HOTSPOT_GRADE">$HOTSPOT_GRADE</td>
+                <td>Security Review rating is $HOTSPOT_GRADE when less than 30% of Security Hotspots are reviewed.</td>
+              </tr>
+            </table>
+            
+            <div style="margin-top: 30px; text-align: center;">
               <p>Report generated by GitHub Actions | <a href="$DASHBOARD_URL" target="_blank">View in SonarQube</a></p>
             </div>
           </body>
@@ -178,22 +293,7 @@ jobs:
           sed -i "s|\$PROJECT_KEY|$PROJECT_KEY|g" sonar-report.html
           sed -i "s|\$DASHBOARD_URL|$DASHBOARD_URL|g" sonar-report.html
           sed -i "s|\$CURRENT_DATE|$CURRENT_DATE|g" sonar-report.html
-
-          # Replace dynamic issue counts
-          CRITICAL_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "CRITICAL")] | length')
-          MAJOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MAJOR")] | length')
-          MINOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MINOR")] | length')
-          INFO_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "INFO")] | length')
-
-          sed -i "s|Critical Issues<\/div>\n.*<\/div>|Critical Issues<\/div>\n                  <div>$CRITICAL_COUNT<\/div>|g" sonar-report.html
-          sed -i "s|Major Issues<\/div>\n.*<\/div>|Major Issues<\/div>\n                  <div>$MAJOR_COUNT<\/div>|g" sonar-report.html
-          sed -i "s|Minor Issues<\/div>\n.*<\/div>|Minor Issues<\/div>\n                  <div>$MINOR_COUNT<\/div>|g" sonar-report.html
-          sed -i "s|Info Issues<\/div>\n.*<\/div>|Info Issues<\/div>\n                  <div>$INFO_COUNT<\/div>|g" sonar-report.html
-
-          echo "HTML report generated successfully"
-
-      - name: Upload HTML Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: sonarqube-report
-          path: sonar-report.html
+          sed -i "s|\$TOTAL_ISSUES|$TOTAL_ISSUES|g" sonar-report.html
+          sed -i "s|\$BLOCKER_COUNT|$BLOCKER_COUNT|g" sonar-report.html
+          sed -i "s|\$CRITICAL_COUNT|$CRITICAL_COUNT|g" sonar-report.html
+          sed -i "s|\$MAJOR
