@@ -7,8 +7,7 @@ on:
 jobs:
   sonarqube-scan:
     name: SonarQube Scan with Excel Report
-    runs-on: ubuntu-22.04
-
+    runs-on: ubuntu-22.04  # Use a supported Ubuntu version
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -38,6 +37,7 @@ jobs:
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.host.url=http://20.198.126.18:9000
             -Dsonar.login=sqp_4816dedd6d794f8150d5e9df293c33312b3bd8ff
+            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 
       - name: Generate Excel Report
         env:
@@ -50,6 +50,11 @@ jobs:
         run: |
           python3 - <<EOF
           import os
+          import subprocess
+
+          # Ensure required packages are installed
+          subprocess.check_call(['pip3', 'install', '--quiet', 'sonarqube-api', 'pandas', 'openpyxl'])
+
           import pandas as pd
           from sonarqube import SonarQubeClient
           from datetime import datetime
@@ -74,20 +79,19 @@ jobs:
               'Tool': ['Sonar', 'PMD', 'CPD', 'Total'],
               'Sonar issues': [''],
               'Severity': ['Blocker', 'Critical', 'Major', 'Minor', 'Info', 'Total'],
-              'Count': [44, 2723, 1823, 769, 31, '=SUM(F9:F13)'],
+              'Count 1': [44, 2723, 1823, 769, 31, '=SUM(F9:F13)'],
               'Sonar security hotspot': [''],
               'VulnerabilityProbability': ['Low', 'Medium', 'High', 'Total'],
-              'Count': [15, 33, 54, '=SUM(I9:I11)'],
+              'Count 2': [15, 33, 54, '=SUM(I9:I11)'],
               'Sonar duplications': [''],
               'No. of findings': [862, '', ''],
               'PMD': [''],
               'Priority': ['Low', 'Medium Low', 'Medium', 'Medium High', 'High', 'Total'],
-              'Count': [0, 0, 0, 0, 0, '=SUM(N9:N13)'],
+              'Count 3': [0, 0, 0, 0, 0, '=SUM(N9:N13)'],
               'CPD': [''],
               'No. of findings': [0, '', '']
           }
 
-          # Fetch issues data
           issues = sonar.issues.search_issues(componentKeys=project_key)
           issues_data = []
           for issue in issues['issues']:
@@ -114,7 +118,7 @@ jobs:
           EOF
 
       - name: Upload Excel Report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v4  # Using the latest stable version of the action
         with:
           name: sonarqube-report
           path: sonarqube_report.xlsx
