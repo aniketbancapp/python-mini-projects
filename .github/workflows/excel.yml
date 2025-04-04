@@ -119,7 +119,7 @@ jobs:
           EOF
 
       - name: Upload Excel Report
-        uses: actions/upload-artifact@v1  # Switch to v1 if v2 still doesn't work
+        uses: actions/upload-artifact@v3  # Using the latest stable version of the action
         with:
           name: sonarqube-report
           path: sonarqube_report.xlsx
