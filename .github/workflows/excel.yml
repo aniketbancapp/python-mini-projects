@@ -1,3 +1,5 @@
+
+
 name: SonarQube Scan with Excel Report
 
 on:
@@ -7,7 +9,7 @@ on:
 jobs:
   sonarqube-scan:
     name: SonarQube Scan with HTML Report
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-22.04  # Switch to a supported Ubuntu version
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -55,7 +57,7 @@ jobs:
 
           # Get project info
           project = sonar.projects.get_project(project=project_key)
-          branch = os.getenv('GITHUB_REF_NAME', 'main')
+          branch = os.getenv('GITHUB_REF_NAME', 'master')
           commit_id = os.getenv('GITHUB_SHA')
 
           # Get current date
@@ -119,7 +121,7 @@ jobs:
           EOF
 
       - name: Upload Excel Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v2  # Use v2 if v3 doesn't work
         with:
           name: sonarqube-report
           path: sonarqube_report.xlsx
