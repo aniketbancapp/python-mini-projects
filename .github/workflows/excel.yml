@@ -1,13 +1,21 @@
-name: SonarQube Scan with HTML Report
+name: SonarQube Scan with HTML Report and Optimized Deployment
 
 on:
   push:
     branches: [ master ]
 
+permissions:
+  pull-requests: write
+  contents: write
+
+env:
+  SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+
 jobs:
   sonarqube-scan:
     name: SonarQube Scan with HTML Report
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -23,21 +31,44 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq curl python3-pip
-          pip3 install sonarqube-api pandas
+          sudo apt-get install -y jq curl
 
       - name: Run SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@master
         with:
           args: >
-            -Dsonar.projectKey=excel
-            -Dsonar.projectName="excel"
+            -Dsonar.projectKey=python
+            -Dsonar.projectName="Python Project"
             -Dsonar.projectVersion=1.0
             -Dsonar.sources=.
             -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.host.url=http://20.198.126.18:9000
-            -Dsonar.login=sqp_4816dedd6d794f8150d5e9df293c33312b3bd8ff
+            -Dsonar.host.url=${{ env.SONAR_HOST_URL }}
+            -Dsonar.login=${{ env.SONAR_TOKEN }}
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
+
+      - name: Verify analysis completion
+        run: |
+          echo "Checking analysis status..."
+          CE_TASK_ID=$(grep "ceTaskId=" .scannerwork/report-task.txt | cut -d'=' -f2)
+          echo "Task ID: $CE_TASK_ID"
+
+          for i in {1..30}; do
+            TASK_STATUS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
+            echo "Attempt $i: Status - $TASK_STATUS"
+            
+            case "$TASK_STATUS" in
+              "SUCCESS") break ;;
+              "FAILED"|"CANCELED") 
+                echo "Analysis failed or was canceled"
+                exit 1 ;;
+              *)
+                if [ $i -eq 30 ]; then
+                  echo "Timeout waiting for analysis completion"
+                  exit 1
+                fi
+                sleep 5 ;;
+            esac
+          done
 
       - name: Generate HTML Report
         run: |
