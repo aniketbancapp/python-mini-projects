@@ -34,8 +34,8 @@ jobs:
             -Dsonar.projectVersion=1.0
             -Dsonar.sources=.
             -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.host.url=${{ env.SONAR_HOST_URL }}
-            -Dsonar.login=${{ env.SONAR_TOKEN2 }}
+            -Dsonar.host.url=http://20.198.126.18:9000
+            -Dsonar.login=sqp_4816dedd6d794f8150d5e9df293c33312b3bd8ff
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 
       - name: Generate Excel Report
