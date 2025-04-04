@@ -7,12 +7,17 @@ on:
 jobs:
   sonarqube-scan:
     name: SonarQube Scan with HTML Report
-    runs-on: ubuntu-22.04  # Use a supported Ubuntu version
+    runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'  # Specify a version like '3.9' if needed
 
       - name: Set up Java
         uses: actions/setup-java@v4
@@ -24,6 +29,8 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y jq curl
+          python -m pip install --upgrade pip
+          pip install pandas sonarqube-client openpyxl
 
       - name: Run SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@master
@@ -39,6 +46,10 @@ jobs:
             -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 
       - name: Generate Excel Report
+        env:
+          SONAR_HOST_URL: http://20.198.126.18:9000
+          SONAR_TOKEN: sqp_4816dedd6d794f8150d5e9df293c33312b3bd8ff
+          SONAR_PROJECT_KEY: excel
         run: |
           python - <<EOF
           import os
@@ -48,7 +59,7 @@ jobs:
 
           # Connect to SonarQube
           url = os.getenv('SONAR_HOST_URL')
-          token = os.getenv('SONAR_TOKEN')
+          token = os.getenv('SONAR_TOKEN2')
           project_key = os.getenv('SONAR_PROJECT_KEY')
           
           sonar = SonarQubeClient(sonarqube_url=url, token=token)
@@ -106,7 +117,7 @@ jobs:
               })
 
           # Create Excel writer
-          with pd.ExcelWriter('sonarqube_report.xlsx') as writer:
+          with pd.ExcelWriter('sonarqube_report.xlsx', engine='openpyxl') as writer:
               # Write Summary sheet
               summary_df = pd.DataFrame(summary_data)
               summary_df.to_excel(writer, sheet_name='Summary', index=False)
@@ -119,7 +130,7 @@ jobs:
           EOF
 
       - name: Upload Excel Report
-        uses: actions/upload-artifact@v4  # Using the latest stable version of the action
+        uses: actions/upload-artifact@v4
         with:
           name: sonarqube-report
           path: sonarqube_report.xlsx
