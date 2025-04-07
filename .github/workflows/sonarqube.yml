@@ -43,6 +43,34 @@ jobs:
             -Dsonar.host.url=${{ env.SONAR_HOST_URL }}
             -Dsonar.login=${{ env.SONAR_TOKEN }}
 
+      - name: Verify analysis completion
+        run: |
+          echo "Waiting for SonarQube analysis to complete..."
+
+          if [ ! -f .scannerwork/report-task.txt ]; then
+            echo "Error: report-task.txt not found!"
+            exit 1
+          fi
+
+          CE_TASK_ID=$(grep "ceTaskId=" .scannerwork/report-task.txt | cut -d'=' -f2)
+          echo "Task ID: $CE_TASK_ID"
+
+          for i in {1..30}; do
+            TASK_STATUS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
+            echo "Attempt $i: Status - $TASK_STATUS"
+
+            if [ "$TASK_STATUS" = "SUCCESS" ]; then
+              break
+            elif [ "$TASK_STATUS" = "FAILED" ] || [ "$TASK_STATUS" = "CANCELED" ]; then
+              echo "Analysis failed or was canceled"
+              exit 1
+            elif [ $i -eq 30 ]; then
+              echo "Timeout waiting for analysis completion"
+              exit 1
+            fi
+            sleep 5
+          done
+
       - name: Upload Report Artifact
         uses: actions/upload-artifact@v4
         with:
