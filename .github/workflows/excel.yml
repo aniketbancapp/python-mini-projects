@@ -1,4 +1,4 @@
-name: SonarQube Scan with HTML Report
+name: SonarQube Scan with Enhanced Report
 
 on:
   push:
@@ -12,8 +12,8 @@ env:
 
 jobs:
   sonarqube-scan:
-    name: SonarQube Scan with HTML Report
-    runs-on: ubuntu-24.04
+    name: SonarQube Scan with Enhanced Report
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -29,14 +29,14 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y jq curl
+          sudo apt-get install -y jq curl pandoc
 
       - name: Run SonarQube Scan
         uses: sonarsource/sonarqube-scan-action@master
         with:
           args: >
-            -Dsonar.projectKey=python
-            -Dsonar.projectName="Python Project"
+            -Dsonar.projectKey=your_project_key
+            -Dsonar.projectName="Your Project Name"
             -Dsonar.projectVersion=1.0
             -Dsonar.sources=.
             -Dsonar.sourceEncoding=UTF-8
@@ -54,257 +54,157 @@ jobs:
             TASK_STATUS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
             echo "Attempt $i: Status - $TASK_STATUS"
             
-            case "$TASK_STATUS" in
-              "SUCCESS") break ;;
-              "FAILED"|"CANCELED") 
-                echo "Analysis failed or was canceled"
-                exit 1 ;;
-              *)
-                if [ $i -eq 30 ]; then
-                  echo "Timeout waiting for analysis completion"
-                  exit 1
-                fi
-                sleep 5 ;;
-            esac
+            if [ "$TASK_STATUS" = "SUCCESS" ]; then
+              break
+            elif [ "$TASK_STATUS" = "FAILED" ] || [ "$TASK_STATUS" = "CANCELED" ]; then
+              echo "Analysis failed or was canceled"
+              exit 1
+            elif [ $i -eq 30 ]; then
+              echo "Timeout waiting for analysis completion"
+              exit 1
+            fi
+            sleep 5
           done
 
       - name: Wait for metrics calculation
-        run: sleep 15  # Give SonarQube time to calculate all metrics
+        run: sleep 30
 
-      - name: Generate HTML Report
+      - name: Generate Enhanced SonarQube Report
         run: |
-          # Get all required data
+          # Get project information
           PROJECT_KEY=$(grep "projectKey=" .scannerwork/report-task.txt | cut -d'=' -f2)
           DASHBOARD_URL=$(grep "dashboardUrl=" .scannerwork/report-task.txt | cut -d'=' -f2)
-          CURRENT_DATE=$(date +"%Y-%m-%d %H:%M:%S")
-          
-          # Function to safely get JSON data
-          safe_curl() {
-            local url=$1
-            local result=$(curl -s -u "$SONAR_TOKEN:" "$url" || echo '{}')
-            if [ -z "$result" ] || [ "$result" = "null" ]; then
-              echo '{}'
-            else
-              echo "$result"
-            fi
+          CURRENT_DATE=$(date +"%d-%m-%Y")
+          COMMIT_ID=${GITHUB_SHA:0:7}
+
+          # Function to make authenticated API calls
+          sonar_api_call() {
+            local endpoint="$1"
+            curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/$endpoint"
           }
 
-          # Get measures with all required metrics
-          MEASURES_JSON=$(safe_curl "$SONAR_HOST_URL/api/measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots,duplicated_lines_density,reliability_rating,security_rating,sqale_rating,security_review_rating,ncloc,coverage")
-          
-          # Debug output
-          echo "Measures JSON:"
-          echo "$MEASURES_JSON"
-          
-          # Function to extract metric with default value
+          # Get measures data
+          MEASURES=$(sonar_api_call "measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots,duplicated_lines_density,coverage,ncloc,reliability_rating,security_rating,sqale_rating,security_review_rating")
+
+          # Get issues data
+          ISSUES=$(sonar_api_call "issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500")
+          HOTSPOTS=$(sonar_api_call "hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW")
+
+          # Extract metrics with error handling
           extract_metric() {
-            local json="$1"
-            local metric="$2"
-            local default="$3"
-            local value=$(echo "$json" | jq -r --arg metric "$metric" '.component.measures[]? | select(.metric == $metric) | .value // empty')
-            echo "${value:-$default}"
+            echo "$1" | jq -r --arg metric "$2" '.component.measures[]? | select(.metric == $metric) | .value // "0"'
           }
-          
-          # Extract metrics with defaults
-          BUGS=$(extract_metric "$MEASURES_JSON" "bugs" "0")
-          VULNERABILITIES=$(extract_metric "$MEASURES_JSON" "vulnerabilities" "0")
-          CODE_SMELLS=$(extract_metric "$MEASURES_JSON" "code_smells" "0")
-          SECURITY_HOTSPOTS=$(extract_metric "$MEASURES_JSON" "security_hotspots" "0")
-          DUPLICATION=$(extract_metric "$MEASURES_JSON" "duplicated_lines_density" "0")
-          COVERAGE=$(extract_metric "$MEASURES_JSON" "coverage" "0")
-          NCLOC=$(extract_metric "$MEASURES_JSON" "ncloc" "0")
-          
-          RELIABILITY_RATING=$(extract_metric "$MEASURES_JSON" "reliability_rating" "1.0")
-          SECURITY_RATING=$(extract_metric "$MEASURES_JSON" "security_rating" "1.0")
-          MAINTAINABILITY_RATING=$(extract_metric "$MEASURES_JSON" "sqale_rating" "1.0")
-          SECURITY_REVIEW_RATING=$(extract_metric "$MEASURES_JSON" "security_review_rating" "1.0")
-          
+
+          # Basic metrics
+          BUGS=$(extract_metric "$MEASURES" "bugs" "0")
+          VULNERABILITIES=$(extract_metric "$MEASURES" "vulnerabilities" "0")
+          CODE_SMELLS=$(extract_metric "$MEASURES" "code_smells" "0")
+          SECURITY_HOTSPOTS=$(extract_metric "$MEASURES" "security_hotspots" "0")
+          DUPLICATION=$(extract_metric "$MEASURES" "duplicated_lines_density" "0")
+          COVERAGE=$(extract_metric "$MEASURES" "coverage" "0")
+          NCLOC=$(extract_metric "$MEASURES" "ncloc" "0")
+
+          # Ratings
+          RELIABILITY_RATING=$(extract_metric "$MEASURES" "reliability_rating" "1.0")
+          SECURITY_RATING=$(extract_metric "$MEASURES" "security_rating" "1.0")
+          MAINTAINABILITY_RATING=$(extract_metric "$MEASURES" "sqale_rating" "1.0")
+          SECURITY_REVIEW_RATING=$(extract_metric "$MEASURES" "security_review_rating" "1.0")
+
           # Convert ratings to letter grades
-          convert_rating_to_letter() {
+          convert_rating() {
             case $1 in
-              "1.0") echo "A" ;;
-              "2.0") echo "B" ;;
-              "3.0") echo "C" ;;
-              "4.0") echo "D" ;;
-              "5.0") echo "E" ;;
-              *) echo "N/A" ;;
+              "1.0") echo "A";;
+              "2.0") echo "B";;
+              "3.0") echo "C";;
+              "4.0") echo "D";;
+              "5.0") echo "E";;
+              *) echo "A";;
             esac
           }
-          
-          BUG_GRADE=$(convert_rating_to_letter "$RELIABILITY_RATING")
-          VULNERABILITY_GRADE=$(convert_rating_to_letter "$SECURITY_RATING")
-          CODE_SMELL_GRADE=$(convert_rating_to_letter "$MAINTAINABILITY_RATING")
-          HOTSPOT_GRADE=$(convert_rating_to_letter "$SECURITY_REVIEW_RATING")
-          
-          # Get issues data
-          ISSUES_JSON=$(safe_curl "$SONAR_HOST_URL/api/issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500")
-          
-          # Get counts by severity with defaults
-          BLOCKER_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "BLOCKER")] | length // 0')
-          CRITICAL_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "CRITICAL")] | length // 0')
-          MAJOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MAJOR")] | length // 0')
-          MINOR_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "MINOR")] | length // 0')
-          INFO_COUNT=$(echo "$ISSUES_JSON" | jq '[.issues[] | select(.severity == "INFO")] | length // 0')
-          TOTAL_ISSUES=$(($BLOCKER_COUNT + $CRITICAL_COUNT + $MAJOR_COUNT + $MINOR_COUNT + $INFO_COUNT))
-          
-          # Get security hotspot counts
-          HOTSPOT_LOW=$(safe_curl "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&vulnerabilityProbability=LOW" | jq '.paging.total // 0')
-          HOTSPOT_MEDIUM=$(safe_curl "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&vulnerabilityProbability=MEDIUM" | jq '.paging.total // 0')
-          HOTSPOT_HIGH=$(safe_curl "$SONAR_HOST_URL/api/hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW&vulnerabilityProbability=HIGH" | jq '.paging.total // 0')
-          HOTSPOT_TOTAL=$(($HOTSPOT_LOW + $HOTSPOT_MEDIUM + $HOTSPOT_HIGH))
 
-          # Create HTML report
-          cat <<EOF > sonar-report.html
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>SonarQube Report - $PROJECT_KEY</title>
-            <style>
-              body { font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }
-              .container { max-width: 1200px; margin: 0 auto; }
-              table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-              th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
-              th { background-color: #f2f2f2; font-weight: bold; }
-              .header { margin-bottom: 30px; padding-bottom: 15px; border-bottom: 1px solid #eee; }
-              .section-title { font-weight: bold; margin: 25px 0 15px 0; font-size: 1.2em; color: #333; }
-              .metric-card { 
-                background: #f9f9f9; 
-                border-radius: 5px; 
-                padding: 15px; 
-                margin-bottom: 15px;
-                box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-              }
-             .metric-row { display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; }
-             .metric-box { 
-               flex: 1; 
-               min-width: 200px; 
-               background: white; 
-               padding: 15px; 
-               border-radius: 5px; 
-              box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-              }
-             .grade-A { color: #00aa00; font-weight: bold; }
-             .grade-B { color: #8db600; font-weight: bold; }
-             .grade-C { color: #f4c430; font-weight: bold; }
-             .grade-D { color: #ff7400; font-weight: bold; }
-             .grade-E { color: #ff0000; font-weight: bold; }
-             .severity-BLOCKER { color: #ff0000; }
-             .severity-CRITICAL { color: #ff7400; }
-             .severity-MAJOR { color: #f4c430; }
-             .severity-MINOR { color: #8db600; }
-             .severity-INFO { color: #00aa00; }
-             .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; text-align: center; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
-              <div class="header">
-                <h1>SonarQube Report for $PROJECT_KEY</h1>
-                <p><strong>Dashboard:</strong> <a href="$DASHBOARD_URL">$DASHBOARD_URL</a></p>
-                <p><strong>Generated on:</strong> $CURRENT_DATE</p>
-              </div>
+          BUG_GRADE=$(convert_rating "$RELIABILITY_RATING")
+          VULN_GRADE=$(convert_rating "$SECURITY_RATING")
+          CODE_GRADE=$(convert_rating "$MAINTAINABILITY_RATING")
+          HOTSPOT_GRADE=$(convert_rating "$SECURITY_REVIEW_RATING")
 
-              <div class="section-title">Project Metrics</div>
-              <div class="metric-card">
-                <div class="metric-row">
-                  <div class="metric-box">
-                    <strong>Bugs</strong>: $BUGS
-                  </div>
-                  <div class="metric-box">
-                    <strong>Vulnerabilities</strong>: $VULNERABILITIES
-                  </div>
-                  <div class="metric-box">
-                    <strong>Code Smells</strong>: $CODE_SMELLS
-                  </div>
-                  <div class="metric-box">
-                    <strong>Security Hotspots</strong>: $SECURITY_HOTSPOTS
-                  </div>
-                </div>
-                <div class="metric-row">
-                  <div class="metric-box">
-                    <strong>Duplication</strong>: $DUPLICATION
-                  </div>
-                  <div class="metric-box">
-                    <strong>Coverage</strong>: $COVERAGE
-                  </div>
-                  <div class="metric-box">
-                    <strong>Lines of Code</strong>: $NCLOC
-                  </div>
-                </div>
-                <div class="metric-row">
-                  <div class="metric-box">
-                    <strong>Reliability Rating</strong>: <span class="grade-$BUG_GRADE">$BUG_GRADE</span>
-                  </div>
-                  <div class="metric-box">
-                    <strong>Security Rating</strong>: <span class="grade-$VULNERABILITY_GRADE">$VULNERABILITY_GRADE</span>
-                  </div>
-                  <div class="metric-box">
-                    <strong>Maintainability Rating</strong>: <span class="grade-$CODE_SMELL_GRADE">$CODE_SMELL_GRADE</span>
-                  </div>
-                  <div class="metric-box">
-                    <strong>Security Review Rating</strong>: <span class="grade-$HOTSPOT_GRADE">$HOTSPOT_GRADE</span>
-                  </div>
-                </div>
-              </div>
+          # Issues by severity
+          BLOCKER=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "BLOCKER")] | length')
+          CRITICAL=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "CRITICAL")] | length')
+          MAJOR=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "MAJOR")] | length')
+          MINOR=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "MINOR")] | length')
+          INFO=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "INFO")] | length')
+          TOTAL_ISSUES=$((BLOCKER + CRITICAL + MAJOR + MINOR + INFO))
 
-              <div class="section-title">Issues Breakdown</div>
-              <div class="metric-card">
-                <div class="metric-row">
-                  <div class="metric-box severity-BLOCKER">
-                    <strong>Blockers</strong>: $BLOCKER_COUNT
-                  </div>
-                  <div class="metric-box severity-CRITICAL">
-                    <strong>Critical</strong>: $CRITICAL_COUNT
-                  </div>
-                  <div class="metric-box severity-MAJOR">
-                    <strong>Major</strong>: $MAJOR_COUNT
-                  </div>
-                  <div class="metric-box severity-MINOR">
-                    <strong>Minor</strong>: $MINOR_COUNT
-                  </div>
-                  <div class="metric-box severity-INFO">
-                    <strong>Info</strong>: $INFO_COUNT
-                  </div>
-                </div>
-                <div class="metric-row">
-                  <div class="metric-box">
-                    <strong>Total Issues</strong>: $TOTAL_ISSUES
-                  </div>
-                </div>
-              </div>
+          # Security hotspots by risk
+          HOTSPOT_LOW=$(echo "$HOTSPOTS" | jq '[.hotspots[] | select(.vulnerabilityProbability == "LOW")] | length')
+          HOTSPOT_MEDIUM=$(echo "$HOTSPOTS" | jq '[.hotspots[] | select(.vulnerabilityProbability == "MEDIUM")] | length')
+          HOTSPOT_HIGH=$(echo "$HOTSPOTS" | jq '[.hotspots[] | select(.vulnerabilityProbability == "HIGH")] | length')
+          TOTAL_HOTSPOTS=$((HOTSPOT_LOW + HOTSPOT_MEDIUM + HOTSPOT_HIGH))
 
-              <div class="section-title">Security Hotspots</div>
-              <div class="metric-card">
-                <div class="metric-row">
-                  <div class="metric-box">
-                    <strong>Low Risk</strong>: $HOTSPOT_LOW
-                  </div>
-                  <div class="metric-box">
-                    <strong>Medium Risk</strong>: $HOTSPOT_MEDIUM
-                  </div>
-                  <div class="metric-box">
-                    <strong>High Risk</strong>: $HOTSPOT_HIGH
-                  </div>
-                </div>
-                <div class="metric-row">
-                  <div class="metric-box">
-                    <strong>Total Hotspots</strong>: $HOTSPOT_TOTAL
-                  </div>
-                </div>
-              </div>
+          # Create markdown report
+          cat <<EOF > sonar-report.md
+# SonarQube Analysis Report
 
-              <div class="footer">
-                <p>Generated by SonarQube Report Generator</p>
-              </div>
-            </div>
-          </body>
-          </html>
-          EOF
+## Git URL
+\${{ github.server_url }}/\${{ github.repository }}
+
+### Branch Name
+master
+
+### Review Date
+$CURRENT_DATE
+
+### Commit ID
+$COMMIT_ID
+
+---
+
+| Overall Findings | Sonar issues | Sonar security hotspots | Sonar duplications |
+|-----------------|--------------|-------------------------|--------------------|
+| **Tool**        | **Count**    | **Severity**            | **No. of findings** |
+| **Sonar**       | $TOTAL_ISSUES | **Blocker**: $BLOCKER    | **Low**: $HOTSPOT_LOW |
+|                 |              | **Critical**: $CRITICAL  | **Medium**: $HOTSPOT_MEDIUM |
+|                 |              | **Major**: $MAJOR        | **High**: $HOTSPOT_HIGH |
+|                 |              | **Minor**: $MINOR        | **Total**: $TOTAL_HOTSPOTS |
+|                 |              | **Info**: $INFO          |                     |
+|                 |              | **Total**: $TOTAL_ISSUES |                     |
+
+---
+
+### SonarQube Grades
+| Category          | Grade | Description |
+|-------------------|-------|-------------|
+| Bugs              | $BUG_GRADE | Reliability rating |
+| Vulnerabilities   | $VULN_GRADE | Security rating |
+| Code Smells       | $CODE_GRADE | Maintainability rating |
+| Security Hotspots | $HOTSPOT_GRADE | Security Review rating |
+
+---
+
+### Summary
+- Total Issues: $TOTAL_ISSUES
+- Security Hotspots: $TOTAL_HOTSPOTS
+- Code Duplication: $DUPLICATION%
+- Test Coverage: $COVERAGE%
+
+[View Full Report]($DASHBOARD_URL)
+EOF
+
+          # Convert markdown to HTML
+          pandoc sonar-report.md -o sonar-report.html
+
+          # Debug output
+          echo "Generated report content:"
+          cat sonar-report.md
 
       - name: Upload HTML Report
         uses: actions/upload-artifact@v4
         with:
           name: sonarqube-report
           path: sonar-report.html
+
+      - name: Upload Markdown Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonarqube-report-md
+          path: sonar-report.md
