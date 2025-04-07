@@ -1,7 +1,7 @@
-     name: SonarQube Scan with Enhanced Report
+name: SonarQube Scan with Enhanced Report
 
 on:
-  push:
+  pushfgdfgb:
     branches: [ master ]
 
 env:
