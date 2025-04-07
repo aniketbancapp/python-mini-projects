@@ -173,47 +173,47 @@ jobs:
 # SonarQube Analysis Report
 
 ## Project Information
-- **Project Name**: Python Project
-- **Project Key**: $PROJECT_KEY
-- **Analysis Date**: $CURRENT_DATE
-- **Commit ID**: $COMMIT_ID
-- **Report URL**: [$DASHBOARD_URL]($DASHBOARD_URL)
+          - **Project Name**: Python Project
+          - **Project Key**: $PROJECT_KEY
+          - **Analysis Date**: $CURRENT_DATE
+          - **Commit ID**: $COMMIT_ID
+          - **Report URL**: [$DASHBOARD_URL]($DASHBOARD_URL)
 
-## Quality Gate Summary
-| Metric               | Value       |
-|----------------------|-------------|
-| Bugs                 | $BUGS ($BUG_GRADE) |
-| Vulnerabilities      | $VULNERABILITIES ($VULN_GRADE) |
-| Code Smells          | $CODE_SMELLS ($CODE_GRADE) |
-| Security Hotspots    | $SECURITY_HOTSPOTS ($HOTSPOT_GRADE) |
-| Duplicated Code (%)  | $DUPLICATION |
-| Coverage (%)         | $COVERAGE |
-| Lines of Code        | $NCLOC |
+          ## Quality Gate Summary
+          | Metric               | Value       |
+          |----------------------|-------------|
+          | Bugs                 | $BUGS ($BUG_GRADE) |
+          | Vulnerabilities      | $VULNERABILITIES ($VULN_GRADE) |
+          | Code Smells          | $CODE_SMELLS ($CODE_GRADE) |
+          | Security Hotspots    | $SECURITY_HOTSPOTS ($HOTSPOT_GRADE) |
+          | Duplicated Code (%)  | $DUPLICATION |
+          | Coverage (%)         | $COVERAGE |
+          | Lines of Code        | $NCLOC |
 
-## Issues Breakdown
-| Severity  | Count  |
-|-----------|--------|
-| Blocker   | $BLOCKER |
-| Critical  | $CRITICAL |
-| Major     | $MAJOR |
-| Minor     | $MINOR |
-| Info      | $INFO |
-| **Total** | **$TOTAL_ISSUES** |
+          ## Issues Breakdown
+          | Severity  | Count  |
+          |-----------|--------|
+          | Blocker   | $BLOCKER |
+          | Critical  | $CRITICAL |
+          | Major     | $MAJOR |
+          | Minor     | $MINOR |
+          | Info      | $INFO |
+          | **Total** | **$TOTAL_ISSUES** |
 
 ## Security Hotspots
-| Risk Level | Count  |
-|------------|--------|
-| High       | $HOTSPOT_HIGH |
-| Medium     | $HOTSPOT_MEDIUM |
-| Low        | $HOTSPOT_LOW |
-| **Total**  | **$TOTAL_HOTSPOTS** |
+          | Risk Level | Count  |
+          |------------|--------|
+          | High       | $HOTSPOT_HIGH |
+          | Medium     | $HOTSPOT_MEDIUM |
+          | Low        | $HOTSPOT_LOW |
+          | **Total**  | **$TOTAL_HOTSPOTS** |
 
 ## Recommendations
-- Address all Blocker and Critical issues immediately
-- Review all Security Hotspots, especially High risk ones
-- Improve test coverage to at least 80%
-- Reduce code duplication below 5%
-EOF
+          - Address all Blocker and Critical issues immediately
+          - Review all Security Hotspots, especially High risk ones
+          - Improve test coverage to at least 80%
+          - Reduce code duplication below 5%
+          EOF
 
           # Convert markdown to HTML
           pandoc sonar-report.md -o sonar-report.html
