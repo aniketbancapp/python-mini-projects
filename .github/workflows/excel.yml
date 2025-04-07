@@ -3,8 +3,6 @@ name: SonarQube Scan with Enhanced Report
 on:
   push:
     branches: [ master ]
-  pull_request:
-    types: [opened, synchronize, reopened]
 
 env:
   SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
@@ -14,6 +12,7 @@ jobs:
   sonarqube-scan:
     name: SonarQube Scan with Enhanced Report
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -42,18 +41,23 @@ jobs:
             -Dsonar.sourceEncoding=UTF-8
             -Dsonar.host.url=${{ env.SONAR_HOST_URL }}
             -Dsonar.login=${{ env.SONAR_TOKEN }}
-            -Dsonar.javascript.lcov.reportPaths=coverage/lcov.info
 
       - name: Verify analysis completion
         run: |
-          echo "Checking analysis status..."
+          echo "Waiting for SonarQube analysis to complete..."
+
+          if [ ! -f .scannerwork/report-task.txt ]; then
+            echo "Error: report-task.txt not found!"
+            exit 1
+          fi
+
           CE_TASK_ID=$(grep "ceTaskId=" .scannerwork/report-task.txt | cut -d'=' -f2)
           echo "Task ID: $CE_TASK_ID"
 
           for i in {1..30}; do
             TASK_STATUS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
             echo "Attempt $i: Status - $TASK_STATUS"
-            
+
             if [ "$TASK_STATUS" = "SUCCESS" ]; then
               break
             elif [ "$TASK_STATUS" = "FAILED" ] || [ "$TASK_STATUS" = "CANCELED" ]; then
@@ -66,51 +70,41 @@ jobs:
             sleep 5
           done
 
-      - name: Wait for metrics calculation
-        run: sleep 30
-
       - name: Generate Enhanced SonarQube Report
         run: |
-          # Get project information
+          set -e
+
           PROJECT_KEY=$(grep "projectKey=" .scannerwork/report-task.txt | cut -d'=' -f2)
           DASHBOARD_URL=$(grep "dashboardUrl=" .scannerwork/report-task.txt | cut -d'=' -f2)
           CURRENT_DATE=$(date +"%d-%m-%Y")
           COMMIT_ID=${GITHUB_SHA:0:7}
 
-          # Function to make authenticated API calls
           sonar_api_call() {
             local endpoint="$1"
             curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/$endpoint"
           }
 
-          # Get measures data
           MEASURES=$(sonar_api_call "measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots,duplicated_lines_density,coverage,ncloc,reliability_rating,security_rating,sqale_rating,security_review_rating")
-
-          # Get issues data
           ISSUES=$(sonar_api_call "issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500")
           HOTSPOTS=$(sonar_api_call "hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW")
 
-          # Extract metrics with error handling
           extract_metric() {
-            echo "$1" | jq -r --arg metric "$2" '.component.measures[]? | select(.metric == $metric) | .value // "0"'
+            echo "$1" | jq -r --arg metric "$2" '.component.measures[]? | select(.metric == $metric) | .value' || echo "0"
           }
 
-          # Basic metrics
-          BUGS=$(extract_metric "$MEASURES" "bugs" "0")
-          VULNERABILITIES=$(extract_metric "$MEASURES" "vulnerabilities" "0")
-          CODE_SMELLS=$(extract_metric "$MEASURES" "code_smells" "0")
-          SECURITY_HOTSPOTS=$(extract_metric "$MEASURES" "security_hotspots" "0")
-          DUPLICATION=$(extract_metric "$MEASURES" "duplicated_lines_density" "0")
-          COVERAGE=$(extract_metric "$MEASURES" "coverage" "0")
-          NCLOC=$(extract_metric "$MEASURES" "ncloc" "0")
+          BUGS=$(extract_metric "$MEASURES" "bugs")
+          VULNERABILITIES=$(extract_metric "$MEASURES" "vulnerabilities")
+          CODE_SMELLS=$(extract_metric "$MEASURES" "code_smells")
+          SECURITY_HOTSPOTS=$(extract_metric "$MEASURES" "security_hotspots")
+          DUPLICATION=$(extract_metric "$MEASURES" "duplicated_lines_density")
+          COVERAGE=$(extract_metric "$MEASURES" "coverage")
+          NCLOC=$(extract_metric "$MEASURES" "ncloc")
 
-          # Ratings
-          RELIABILITY_RATING=$(extract_metric "$MEASURES" "reliability_rating" "1.0")
-          SECURITY_RATING=$(extract_metric "$MEASURES" "security_rating" "1.0")
-          MAINTAINABILITY_RATING=$(extract_metric "$MEASURES" "sqale_rating" "1.0")
-          SECURITY_REVIEW_RATING=$(extract_metric "$MEASURES" "security_review_rating" "1.0")
+          RELIABILITY_RATING=$(extract_metric "$MEASURES" "reliability_rating")
+          SECURITY_RATING=$(extract_metric "$MEASURES" "security_rating")
+          MAINTAINABILITY_RATING=$(extract_metric "$MEASURES" "sqale_rating")
+          SECURITY_REVIEW_RATING=$(extract_metric "$MEASURES" "security_review_rating")
 
-          # Convert ratings to letter grades
           convert_rating() {
             case $1 in
               "1.0") echo "A";;
@@ -118,7 +112,7 @@ jobs:
               "3.0") echo "C";;
               "4.0") echo "D";;
               "5.0") echo "E";;
-              *) echo "A";;
+              *) echo "N/A";;
             esac
           }
 
@@ -127,7 +121,6 @@ jobs:
           CODE_GRADE=$(convert_rating "$MAINTAINABILITY_RATING")
           HOTSPOT_GRADE=$(convert_rating "$SECURITY_REVIEW_RATING")
 
-          # Issues by severity
           BLOCKER=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "BLOCKER")] | length')
           CRITICAL=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "CRITICAL")] | length')
           MAJOR=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "MAJOR")] | length')
@@ -135,21 +128,19 @@ jobs:
           INFO=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "INFO")] | length')
           TOTAL_ISSUES=$((BLOCKER + CRITICAL + MAJOR + MINOR + INFO))
 
-          # Security hotspots by risk
           HOTSPOT_LOW=$(echo "$HOTSPOTS" | jq '[.hotspots[] | select(.vulnerabilityProbability == "LOW")] | length')
           HOTSPOT_MEDIUM=$(echo "$HOTSPOTS" | jq '[.hotspots[] | select(.vulnerabilityProbability == "MEDIUM")] | length')
           HOTSPOT_HIGH=$(echo "$HOTSPOTS" | jq '[.hotspots[] | select(.vulnerabilityProbability == "HIGH")] | length')
           TOTAL_HOTSPOTS=$((HOTSPOT_LOW + HOTSPOT_MEDIUM + HOTSPOT_HIGH))
 
-          # Create markdown report
           cat <<EOF > sonar-report.md
           # SonarQube Analysis Report
 
           ## Git URL
-          \${{ github.server_url }}/\${{ github.repository }}
+          ${{ github.server_url }}/${{ github.repository }}
 
           ### Branch Name
-          master
+          ${{ github.ref_name }}
 
           ### Review Date
           $CURRENT_DATE
@@ -160,22 +151,22 @@ jobs:
           ---
 
           | Overall Findings | Sonar issues | Sonar security hotspots | Sonar duplications |
-          |-----------------|--------------|-------------------------|--------------------|
-          | **Tool**        | **Count**    | **Severity**            | **No. of findings** |
-          | **Sonar**       | $TOTAL_ISSUES | **Blocker**: $BLOCKER    | **Low**: $HOTSPOT_LOW |
-          |                 |              | **Critical**: $CRITICAL  | **Medium**: $HOTSPOT_MEDIUM |
-          |                 |              | **Major**: $MAJOR        | **High**: $HOTSPOT_HIGH |
-          |                 |              | **Minor**: $MINOR        | **Total**: $TOTAL_HOTSPOTS |
-          |                 |              | **Info**: $INFO          |                     |
-          |                 |              | **Total**: $TOTAL_ISSUES |                     |
+          |------------------|--------------|--------------------------|---------------------|
+          | **Tool**         | **Count**    | **Severity**             | **No. of findings** |
+          | **Sonar**        | $TOTAL_ISSUES | **Blocker**: $BLOCKER     | **Low**: $HOTSPOT_LOW |
+          |                  |              | **Critical**: $CRITICAL   | **Medium**: $HOTSPOT_MEDIUM |
+          |                  |              | **Major**: $MAJOR         | **High**: $HOTSPOT_HIGH |
+          |                  |              | **Minor**: $MINOR         | **Total**: $TOTAL_HOTSPOTS |
+          |                  |              | **Info**: $INFO           |                     |
+          |                  |              | **Total**: $TOTAL_ISSUES  |                     |
 
           ---
 
           ### SonarQube Grades
-          | Category          | Grade | Description |
-          |-------------------|-------|-------------|
-          | Bugs              | $BUG_GRADE | Reliability rating |
-          | Vulnerabilities   | $VULN_GRADE | Security rating |
+          | Category          | Grade | Description              |
+          |-------------------|-------|--------------------------|
+          | Bugs              | $BUG_GRADE | Reliability rating     |
+          | Vulnerabilities   | $VULN_GRADE | Security rating        |
           | Code Smells       | $CODE_GRADE | Maintainability rating |
           | Security Hotspots | $HOTSPOT_GRADE | Security Review rating |
 
@@ -190,21 +181,18 @@ jobs:
           [View Full Report]($DASHBOARD_URL)
           EOF
 
-          # Convert markdown to HTML
           pandoc sonar-report.md -o sonar-report.html
-
-          # Debug output
-          echo "Generated report content:"
+          echo "Generated report:"
           cat sonar-report.md
-
-      - name: Upload HTML Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: sonarqube-report
-          path: sonar-report.html
 
       - name: Upload Markdown Report
         uses: actions/upload-artifact@v4
         with:
-          name: sonarqube-report-md
+          name: sonar-report-md
           path: sonar-report.md
+
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: sonar-report-html
+          path: sonar-report.html
