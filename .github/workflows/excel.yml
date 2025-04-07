@@ -200,13 +200,13 @@ jobs:
            </style>
            </head>
            <body>
-  <div class="container">
-    <div class="header">
-      <h1>SonarQube Quality Report</h1>
-      <h2>$PROJECT_KEY</h2>
-      <p>Generated on: $CURRENT_DATE</p>
-      <p>View full report: <a href="$DASHBOARD_URL" target="_blank">$DASHBOARD_URL</a></p>
-    </div>
+             <div class="container">
+               <div class="header">
+                 <h1>SonarQube Quality Report</h1>
+                 <h2>$PROJECT_KEY</h2>
+                 <p>Generated on: $CURRENT_DATE</p>
+                 <p>View full report: <a href="$DASHBOARD_URL" target="_blank">$DASHBOARD_URL</a></p>
+               </div>
 
     <div class="section-title">Project Overview</div>
     <div class="metric-row">
