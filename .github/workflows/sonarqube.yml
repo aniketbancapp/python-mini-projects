@@ -1,78 +1,74 @@
-name: SonarQube Scan 
+name: SonarQube Scan and Report
 
 on:
   push:
     branches:
       - '**'
 
-env:
-  SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-  SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
 jobs:
-  sonarqube-scan:
-    name: SonarQube Scan with Enhanced Report
+  sonarqube:
     runs-on: ubuntu-latest
+    name: SonarQube Scan & Report
+
+    env:
+      SONAR_HOST_URL: https://your-sonarqube-domain
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.14-7/x64
+      JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.14-7/x64
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
       - name: Set up Java
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
+          distribution: temurin
           java-version: '17'
 
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y jq curl pandoc
+      - name: Cache Sonar packages
+        uses: actions/cache@v3
+        with:
+          path: ~/.sonar/cache
+          key: ${{ runner.os }}-sonar
+          restore-keys: ${{ runner.os }}-sonar
 
       - name: Run SonarQube Scan
-        uses: sonarsource/sonarqube-scan-action@master
-        with:
-          args: >
-            -Dsonar.projectKey=python
-            -Dsonar.projectName="Python Project"
-            -Dsonar.projectVersion=1.0
-            -Dsonar.sources=.
-            -Dsonar.sourceEncoding=UTF-8
-            -Dsonar.host.url=${{ env.SONAR_HOST_URL }}
-            -Dsonar.login=${{ env.SONAR_TOKEN }}
-
-      - name: Verify analysis completion
         run: |
-          echo "Waiting for SonarQube analysis to complete..."
+          sonar-scanner \
+            -Dsonar.projectKey=python \
+            -Dsonar.host.url=${{ env.SONAR_HOST_URL }} \
+            -Dsonar.login=${{ env.SONAR_TOKEN }} \
+            -Dsonar.qualitygate.wait=true \
+            -Dsonar.html.enabled=true \
+            -Dsonar.report.export.path=sonar-report.html
 
-          if [ ! -f .scannerwork/report-task.txt ]; then
-            echo "Error: report-task.txt not found!"
-            exit 1
-          fi
-
-          CE_TASK_ID=$(grep "ceTaskId=" .scannerwork/report-task.txt | cut -d'=' -f2)
-          echo "Task ID: $CE_TASK_ID"
-
-          for i in {1..30}; do
-            TASK_STATUS=$(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/ce/task?id=$CE_TASK_ID" | jq -r '.task.status')
-            echo "Attempt $i: Status - $TASK_STATUS"
-
-            if [ "$TASK_STATUS" = "SUCCESS" ]; then
-              break
-            elif [ "$TASK_STATUS" = "FAILED" ] || [ "$TASK_STATUS" = "CANCELED" ]; then
-              echo "Analysis failed or was canceled"
-              exit 1
-            elif [ $i -eq 30 ]; then
-              echo "Timeout waiting for analysis completion"
-              exit 1
-            fi
-            sleep 5
-          done
-
-      - name: Upload Report Artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload SonarQube HTML Report
+        uses: actions/upload-artifact@v3
         with:
-          name: sonar-report
+          name: sonar-html-report
           path: sonar-report.html
+          if-no-files-found: warn
+          compression-level: 6
+          overwrite: false
+          include-hidden-files: false
+
+      - name: Fetch SonarQube Metrics as JSON
+        run: |
+          PROJECT_KEY="your_project_key"
+          AUTH_HEADER="Authorization: Basic $(echo -n '${{ env.SONAR_TOKEN }}:' | base64)"
+          
+          curl -s -H "$AUTH_HEADER" "$SONAR_HOST_URL/api/measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,security_hotspots_reviewed,code_smells,coverage,duplicated_lines_density,ncloc" \
+            -o sonar-report.json
+
+      - name: Convert JSON Report to Markdown
+        run: |
+          echo "### SonarQube Metrics Report" > sonar-summary.md
+          jq -r '.component.measures[] | "* \(.metric | gsub("_"; " ") | ascii_upcase): \(.value)"' sonar-report.json >> sonar-summary.md
+          cat sonar-summary.md
+
+      - name: Upload Markdown Summary
+        uses: actions/upload-artifact@v3
+        with:
+          name: sonar-metrics-summary
+          path: sonar-summary.md
