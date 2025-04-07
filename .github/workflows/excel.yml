@@ -35,8 +35,8 @@ jobs:
         uses: sonarsource/sonarqube-scan-action@master
         with:
           args: >
-            -Dsonar.projectKey=your_project_key
-            -Dsonar.projectName="Your Project Name"
+            -Dsonar.projectKey=python
+            -Dsonar.projectName="Python Project"
             -Dsonar.projectVersion=1.0
             -Dsonar.sources=.
             -Dsonar.sourceEncoding=UTF-8
