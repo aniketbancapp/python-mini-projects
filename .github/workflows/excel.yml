@@ -89,7 +89,7 @@ jobs:
               echo "$result"
             fi
           }
-          
+
           # Get measures with all required metrics
           MEASURES_JSON=$(safe_curl "$SONAR_HOST_URL/api/measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots,duplicated_lines_density,reliability_rating,security_rating,sqale_rating,security_review_rating,ncloc,coverage")
           
@@ -196,127 +196,113 @@ jobs:
              .severity-MAJOR { color: #f4c430; }
              .severity-MINOR { color: #8db600; }
              .severity-INFO { color: #00aa00; }
-             .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; font-size: 0.9em; color: #666; }
-           </style>
-           </head>
-           <body>
-             <div class="container">
-               <div class="header">
-                 <h1>SonarQube Quality Report</h1>
-                 <h2>$PROJECT_KEY</h2>
-                 <p>Generated on: $CURRENT_DATE</p>
-                 <p>View full report: <a href="$DASHBOARD_URL" target="_blank">$DASHBOARD_URL</a></p>
-               </div>
+             .footer { margin-top: 30px; padding-top: 15px; border-top: 1px solid #eee; text-align: center; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="header">
+                <h1>SonarQube Report for $PROJECT_KEY</h1>
+                <p><strong>Dashboard:</strong> <a href="$DASHBOARD_URL">$DASHBOARD_URL</a></p>
+                <p><strong>Generated on:</strong> $CURRENT_DATE</p>
+              </div>
 
-    <div class="section-title">Project Overview</div>
-    <div class="metric-row">
-      <div class="metric-box">
-        <h3>Lines of Code</h3>
-        <p style="font-size: 1.5em;">$NCLOC</p>
-      </div>
-      <div class="metric-box">
-        <h3>Coverage</h3>
-        <p style="font-size: 1.5em;">$COVERAGE%</p>
-      </div>
-      <div class="metric-box">
-        <h3>Duplications</h3>
-        <p style="font-size: 1.5em;">$DUPLICATION%</p>
-      </div>
-    </div>
+              <div class="section-title">Project Metrics</div>
+              <div class="metric-card">
+                <div class="metric-row">
+                  <div class="metric-box">
+                    <strong>Bugs</strong>: $BUGS
+                  </div>
+                  <div class="metric-box">
+                    <strong>Vulnerabilities</strong>: $VULNERABILITIES
+                  </div>
+                  <div class="metric-box">
+                    <strong>Code Smells</strong>: $CODE_SMELLS
+                  </div>
+                  <div class="metric-box">
+                    <strong>Security Hotspots</strong>: $SECURITY_HOTSPOTS
+                  </div>
+                </div>
+                <div class="metric-row">
+                  <div class="metric-box">
+                    <strong>Duplication</strong>: $DUPLICATION
+                  </div>
+                  <div class="metric-box">
+                    <strong>Coverage</strong>: $COVERAGE
+                  </div>
+                  <div class="metric-box">
+                    <strong>Lines of Code</strong>: $NCLOC
+                  </div>
+                </div>
+                <div class="metric-row">
+                  <div class="metric-box">
+                    <strong>Reliability Rating</strong>: <span class="grade-$BUG_GRADE">$BUG_GRADE</span>
+                  </div>
+                  <div class="metric-box">
+                    <strong>Security Rating</strong>: <span class="grade-$VULNERABILITY_GRADE">$VULNERABILITY_GRADE</span>
+                  </div>
+                  <div class="metric-box">
+                    <strong>Maintainability Rating</strong>: <span class="grade-$CODE_SMELL_GRADE">$CODE_SMELL_GRADE</span>
+                  </div>
+                  <div class="metric-box">
+                    <strong>Security Review Rating</strong>: <span class="grade-$HOTSPOT_GRADE">$HOTSPOT_GRADE</span>
+                  </div>
+                </div>
+              </div>
 
-    <div class="section-title">Quality Gate Metrics</div>
-    <div class="metric-row">
-      <div class="metric-box">
-        <h3>Bugs</h3>
-        <p style="font-size: 1.5em;">$BUGS <span class="grade-$BUG_GRADE">($BUG_GRADE)</span></p>
-      </div>
-      <div class="metric-box">
-        <h3>Vulnerabilities</h3>
-        <p style="font-size: 1.5em;">$VULNERABILITIES <span class="grade-$VULNERABILITY_GRADE">($VULNERABILITY_GRADE)</span></p>
-      </div>
-      <div class="metric-box">
-        <h3>Code Smells</h3>
-        <p style="font-size: 1.5em;">$CODE_SMELLS <span class="grade-$CODE_SMELL_GRADE">($CODE_SMELL_GRADE)</span></p>
-      </div>
-      <div class="metric-box">
-        <h3>Security Hotspots</h3>
-        <p style="font-size: 1.5em;">$SECURITY_HOTSPOTS <span class="grade-$HOTSPOT_GRADE">($HOTSPOT_GRADE)</span></p>
-      </div>
-    </div>
+              <div class="section-title">Issues Breakdown</div>
+              <div class="metric-card">
+                <div class="metric-row">
+                  <div class="metric-box severity-BLOCKER">
+                    <strong>Blockers</strong>: $BLOCKER_COUNT
+                  </div>
+                  <div class="metric-box severity-CRITICAL">
+                    <strong>Critical</strong>: $CRITICAL_COUNT
+                  </div>
+                  <div class="metric-box severity-MAJOR">
+                    <strong>Major</strong>: $MAJOR_COUNT
+                  </div>
+                  <div class="metric-box severity-MINOR">
+                    <strong>Minor</strong>: $MINOR_COUNT
+                  </div>
+                  <div class="metric-box severity-INFO">
+                    <strong>Info</strong>: $INFO_COUNT
+                  </div>
+                </div>
+                <div class="metric-row">
+                  <div class="metric-box">
+                    <strong>Total Issues</strong>: $TOTAL_ISSUES
+                  </div>
+                </div>
+              </div>
 
-    <div class="section-title">Issues Breakdown</div>
-    <table>
-      <tr>
-        <th>Severity</th>
-        <th>Count</th>
-        <th>Percentage</th>
-      </tr>
-      <tr>
-        <td class="severity-BLOCKER">Blocker</td>
-        <td>$BLOCKER_COUNT</td>
-        <td>$((BLOCKER_COUNT * 100 / (TOTAL_ISSUES > 0 ? TOTAL_ISSUES : 1)))%</td>
-      </tr>
-      <tr>
-        <td class="severity-CRITICAL">Critical</td>
-        <td>$CRITICAL_COUNT</td>
-        <td>$((CRITICAL_COUNT * 100 / (TOTAL_ISSUES > 0 ? TOTAL_ISSUES : 1)))%</td>
-      </tr>
-      <tr>
-        <td class="severity-MAJOR">Major</td>
-        <td>$MAJOR_COUNT</td>
-        <td>$((MAJOR_COUNT * 100 / (TOTAL_ISSUES > 0 ? TOTAL_ISSUES : 1)))%</td>
-      </tr>
-      <tr>
-        <td class="severity-MINOR">Minor</td>
-        <td>$MINOR_COUNT</td>
-        <td>$((MINOR_COUNT * 100 / (TOTAL_ISSUES > 0 ? TOTAL_ISSUES : 1)))%</td>
-      </tr>
-      <tr>
-        <td class="severity-INFO">Info</td>
-        <td>$INFO_COUNT</td>
-        <td>$((INFO_COUNT * 100 / (TOTAL_ISSUES > 0 ? TOTAL_ISSUES : 1)))%</td>
-      </tr>
-      <tr>
-        <th>Total Issues</th>
-        <th>$TOTAL_ISSUES</th>
-        <th>100%</th>
-      </tr>
-    </table>
+              <div class="section-title">Security Hotspots</div>
+              <div class="metric-card">
+                <div class="metric-row">
+                  <div class="metric-box">
+                    <strong>Low Risk</strong>: $HOTSPOT_LOW
+                  </div>
+                  <div class="metric-box">
+                    <strong>Medium Risk</strong>: $HOTSPOT_MEDIUM
+                  </div>
+                  <div class="metric-box">
+                    <strong>High Risk</strong>: $HOTSPOT_HIGH
+                  </div>
+                </div>
+                <div class="metric-row">
+                  <div class="metric-box">
+                    <strong>Total Hotspots</strong>: $HOTSPOT_TOTAL
+                  </div>
+                </div>
+              </div>
 
-    <div class="section-title">Security Hotspots</div>
-    <table>
-      <tr>
-        <th>Risk Level</th>
-        <th>Count</th>
-      </tr>
-      <tr>
-        <td>High</td>
-        <td>$HOTSPOT_HIGH</td>
-      </tr>
-      <tr>
-        <td>Medium</td>
-        <td>$HOTSPOT_MEDIUM</td>
-      </tr>
-      <tr>
-        <td>Low</td>
-        <td>$HOTSPOT_LOW</td>
-      </tr>
-      <tr>
-        <th>Total Hotspots</th>
-        <th>$HOTSPOT_TOTAL</th>
-      </tr>
-    </table>
-
-    <div class="footer">
-      <p>Report generated automatically by GitHub Actions</p>
-      <p>SonarQube version: $(curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/server/version" | jq -r .)</p>
-    </div>
-  </div>
-</body>
-</html>
-EOF
-
-          echo "HTML report generated at sonar-report.html"
+              <div class="footer">
+                <p>Generated by SonarQube Report Generator</p>
+              </div>
+            </div>
+          </body>
+          </html>
+        EOF
 
       - name: Upload HTML Report
         uses: actions/upload-artifact@v4
