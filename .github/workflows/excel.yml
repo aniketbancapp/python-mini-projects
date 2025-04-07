@@ -89,7 +89,7 @@ jobs:
           ISSUES=$(sonar_api_call "issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500")
           HOTSPOTS=$(sonar_api_call "hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW")
 
-          # Dump raw responses to help debugging
+          # Dump raw responses for debugging
           echo "$MEASURES" > debug_measures.json
           echo "$ISSUES" > debug_issues.json
           echo "$HOTSPOTS" > debug_hotspots.json
@@ -98,6 +98,7 @@ jobs:
             echo "$1" | jq -r --arg metric "$2" '.component.measures // [] | map(select(.metric == $metric)) | .[0].value // "0"'
           }
 
+          # Extract key metrics
           BUGS=$(extract_metric "$MEASURES" "bugs")
           VULNERABILITIES=$(extract_metric "$MEASURES" "vulnerabilities")
           CODE_SMELLS=$(extract_metric "$MEASURES" "code_smells")
@@ -111,6 +112,7 @@ jobs:
           MAINTAINABILITY_RATING=$(extract_metric "$MEASURES" "sqale_rating")
           SECURITY_REVIEW_RATING=$(extract_metric "$MEASURES" "security_review_rating")
 
+          # Function to convert rating to letter grades
           convert_rating() {
             case $1 in
               "1.0") echo "A";;
@@ -140,14 +142,15 @@ jobs:
           HOTSPOT_HIGH=$(echo "$HOTSPOTS" | jq '[.hotspots?[]? | select(.vulnerabilityProbability == "HIGH")] | length')
           TOTAL_HOTSPOTS=$((HOTSPOT_LOW + HOTSPOT_MEDIUM + HOTSPOT_HIGH))
 
+          # Generate the report
           cat <<EOF > sonar-report.md
           # SonarQube Analysis Report
 
           ## Git URL
-          ${{ github.server_url }}/${{ github.repository }}
+          ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}
 
           ### Branch Name
-          ${{ github.ref_name }}
+          ${GITHUB_REF_NAME}
 
           ### Review Date
           $CURRENT_DATE
@@ -188,6 +191,7 @@ jobs:
           [View Full Report]($DASHBOARD_URL)
           EOF
 
+          # Convert the markdown report to HTML
           pandoc sonar-report.md -o sonar-report.html
           echo "Generated report:"
           cat sonar-report.md
