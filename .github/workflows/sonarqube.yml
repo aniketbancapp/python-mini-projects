@@ -44,7 +44,7 @@ jobs:
             -Dsonar.report.export.path=sonar-report.html
 
       - name: Upload SonarQube HTML Report
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sonar-html-report
           path: sonar-report.html
@@ -68,7 +68,7 @@ jobs:
           cat sonar-summary.md
 
       - name: Upload Markdown Summary
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: sonar-metrics-summary
           path: sonar-summary.md
