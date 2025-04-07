@@ -84,12 +84,18 @@ jobs:
             curl -s -u "$SONAR_TOKEN:" "$SONAR_HOST_URL/api/$endpoint"
           }
 
+          # Fetch data
           MEASURES=$(sonar_api_call "measures/component?component=$PROJECT_KEY&metricKeys=bugs,vulnerabilities,code_smells,security_hotspots,duplicated_lines_density,coverage,ncloc,reliability_rating,security_rating,sqale_rating,security_review_rating")
           ISSUES=$(sonar_api_call "issues/search?componentKeys=$PROJECT_KEY&resolved=false&ps=500")
           HOTSPOTS=$(sonar_api_call "hotspots/search?projectKey=$PROJECT_KEY&status=TO_REVIEW")
 
+          # Dump raw responses to help debugging
+          echo "$MEASURES" > debug_measures.json
+          echo "$ISSUES" > debug_issues.json
+          echo "$HOTSPOTS" > debug_hotspots.json
+
           extract_metric() {
-            echo "$1" | jq -r --arg metric "$2" '.component.measures[]? | select(.metric == $metric) | .value' || echo "0"
+            echo "$1" | jq -r --arg metric "$2" '.component.measures // [] | map(select(.metric == $metric)) | .[0].value // "0"'
           }
 
           BUGS=$(extract_metric "$MEASURES" "bugs")
@@ -121,16 +127,17 @@ jobs:
           CODE_GRADE=$(convert_rating "$MAINTAINABILITY_RATING")
           HOTSPOT_GRADE=$(convert_rating "$SECURITY_REVIEW_RATING")
 
-          BLOCKER=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "BLOCKER")] | length')
-          CRITICAL=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "CRITICAL")] | length')
-          MAJOR=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "MAJOR")] | length')
-          MINOR=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "MINOR")] | length')
-          INFO=$(echo "$ISSUES" | jq '[.issues[] | select(.severity == "INFO")] | length')
+          # Handle missing/null issue list
+          BLOCKER=$(echo "$ISSUES" | jq '[.issues?[]? | select(.severity == "BLOCKER")] | length')
+          CRITICAL=$(echo "$ISSUES" | jq '[.issues?[]? | select(.severity == "CRITICAL")] | length')
+          MAJOR=$(echo "$ISSUES" | jq '[.issues?[]? | select(.severity == "MAJOR")] | length')
+          MINOR=$(echo "$ISSUES" | jq '[.issues?[]? | select(.severity == "MINOR")] | length')
+          INFO=$(echo "$ISSUES" | jq '[.issues?[]? | select(.severity == "INFO")] | length')
           TOTAL_ISSUES=$((BLOCKER + CRITICAL + MAJOR + MINOR + INFO))
 
-          HOTSPOT_LOW=$(echo "$HOTSPOTS" | jq '[.hotspots[] | select(.vulnerabilityProbability == "LOW")] | length')
-          HOTSPOT_MEDIUM=$(echo "$HOTSPOTS" | jq '[.hotspots[] | select(.vulnerabilityProbability == "MEDIUM")] | length')
-          HOTSPOT_HIGH=$(echo "$HOTSPOTS" | jq '[.hotspots[] | select(.vulnerabilityProbability == "HIGH")] | length')
+          HOTSPOT_LOW=$(echo "$HOTSPOTS" | jq '[.hotspots?[]? | select(.vulnerabilityProbability == "LOW")] | length')
+          HOTSPOT_MEDIUM=$(echo "$HOTSPOTS" | jq '[.hotspots?[]? | select(.vulnerabilityProbability == "MEDIUM")] | length')
+          HOTSPOT_HIGH=$(echo "$HOTSPOTS" | jq '[.hotspots?[]? | select(.vulnerabilityProbability == "HIGH")] | length')
           TOTAL_HOTSPOTS=$((HOTSPOT_LOW + HOTSPOT_MEDIUM + HOTSPOT_HIGH))
 
           cat <<EOF > sonar-report.md
