@@ -143,52 +143,52 @@ jobs:
 
           # Create markdown report
           cat <<EOF > sonar-report.md
-# SonarQube Analysis Report
+          # SonarQube Analysis Report
 
-## Git URL
-\${{ github.server_url }}/\${{ github.repository }}
+          ## Git URL
+          \${{ github.server_url }}/\${{ github.repository }}
 
-### Branch Name
-master
+          ### Branch Name
+          master
 
-### Review Date
-$CURRENT_DATE
+          ### Review Date
+          $CURRENT_DATE
 
-### Commit ID
-$COMMIT_ID
+          ### Commit ID
+          $COMMIT_ID
 
----
+          ---
 
-| Overall Findings | Sonar issues | Sonar security hotspots | Sonar duplications |
-|-----------------|--------------|-------------------------|--------------------|
-| **Tool**        | **Count**    | **Severity**            | **No. of findings** |
-| **Sonar**       | $TOTAL_ISSUES | **Blocker**: $BLOCKER    | **Low**: $HOTSPOT_LOW |
-|                 |              | **Critical**: $CRITICAL  | **Medium**: $HOTSPOT_MEDIUM |
-|                 |              | **Major**: $MAJOR        | **High**: $HOTSPOT_HIGH |
-|                 |              | **Minor**: $MINOR        | **Total**: $TOTAL_HOTSPOTS |
-|                 |              | **Info**: $INFO          |                     |
-|                 |              | **Total**: $TOTAL_ISSUES |                     |
+          | Overall Findings | Sonar issues | Sonar security hotspots | Sonar duplications |
+          |-----------------|--------------|-------------------------|--------------------|
+          | **Tool**        | **Count**    | **Severity**            | **No. of findings** |
+          | **Sonar**       | $TOTAL_ISSUES | **Blocker**: $BLOCKER    | **Low**: $HOTSPOT_LOW |
+          |                 |              | **Critical**: $CRITICAL  | **Medium**: $HOTSPOT_MEDIUM |
+          |                 |              | **Major**: $MAJOR        | **High**: $HOTSPOT_HIGH |
+          |                 |              | **Minor**: $MINOR        | **Total**: $TOTAL_HOTSPOTS |
+          |                 |              | **Info**: $INFO          |                     |
+          |                 |              | **Total**: $TOTAL_ISSUES |                     |
 
----
+          ---
 
-### SonarQube Grades
-| Category          | Grade | Description |
-|-------------------|-------|-------------|
-| Bugs              | $BUG_GRADE | Reliability rating |
-| Vulnerabilities   | $VULN_GRADE | Security rating |
-| Code Smells       | $CODE_GRADE | Maintainability rating |
-| Security Hotspots | $HOTSPOT_GRADE | Security Review rating |
+          ### SonarQube Grades
+          | Category          | Grade | Description |
+          |-------------------|-------|-------------|
+          | Bugs              | $BUG_GRADE | Reliability rating |
+          | Vulnerabilities   | $VULN_GRADE | Security rating |
+          | Code Smells       | $CODE_GRADE | Maintainability rating |
+          | Security Hotspots | $HOTSPOT_GRADE | Security Review rating |
 
----
+          ---
 
-### Summary
-- Total Issues: $TOTAL_ISSUES
-- Security Hotspots: $TOTAL_HOTSPOTS
-- Code Duplication: $DUPLICATION%
-- Test Coverage: $COVERAGE%
+          ### Summary
+          - Total Issues: $TOTAL_ISSUES
+          - Security Hotspots: $TOTAL_HOTSPOTS
+          - Code Duplication: $DUPLICATION%
+          - Test Coverage: $COVERAGE%
 
-[View Full Report]($DASHBOARD_URL)
-EOF
+          [View Full Report]($DASHBOARD_URL)
+          EOF
 
           # Convert markdown to HTML
           pandoc sonar-report.md -o sonar-report.html
